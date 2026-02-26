@@ -76,7 +76,7 @@ def get_mutations(
     study_id: Optional[str] = None,
     max_samples: int = 400,
 ) -> pd.DataFrame:
-    """Fetch mutations for a molecular profile. Pass study_id to auto-fetch samples."""
+    """Fetch mutations. Pass study_id to auto-fetch samples."""
     if not sample_ids and study_id:
         samples = get_samples(study_id)
         if not samples.empty:
