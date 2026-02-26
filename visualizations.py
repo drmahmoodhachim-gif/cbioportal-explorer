@@ -145,8 +145,8 @@ def oncoprint_style_matrix(df: pd.DataFrame, top_genes: int = 20, top_samples: i
         ax.text(0.5, 0.5, "Insufficient data for matrix", ha="center", va="center", fontsize=14)
         return fig, pd.DataFrame()
 
-    top_genes_list = df[gene_col].value_counts().head(top_genes_n).index.tolist()
-    top_samples_list = df[sample_col].value_counts().head(top_samples_n).index.tolist()
+    top_genes_list = df[gene_col].value_counts().head(top_genes).index.tolist()
+    top_samples_list = df[sample_col].value_counts().head(top_samples).index.tolist()
     sub = df[df[gene_col].isin(top_genes_list) & df[sample_col].isin(top_samples_list)]
 
     if sub.empty:
@@ -160,7 +160,7 @@ def oncoprint_style_matrix(df: pd.DataFrame, top_genes: int = 20, top_samples: i
 
     stats_df = pivot.sum(axis=1).sort_values(ascending=False).reset_index()
     stats_df.columns = ["Gene", "Samples with Mutation"]
-    stats_df["Mutation Rate (%)"] = (stats_df["Samples with Mutation"] / len(top_samples_list) * 100).round(1)
+    stats_df["Mutation Rate (%)"] = (stats_df["Samples with Mutation"] / max(1, len(top_samples_list)) * 100).round(1)
 
     fig, ax = plt.subplots(figsize=(14, max(8, len(top_genes_list) * 0.4)))
     sns.heatmap(pivot, cmap="YlOrRd", cbar_kws={"label": "Mutation"}, ax=ax, linewidths=0.5)
