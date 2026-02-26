@@ -145,8 +145,8 @@ def oncoprint_style_matrix(df: pd.DataFrame, top_genes: int = 20, top_samples: i
         ax.text(0.5, 0.5, "Insufficient data for matrix", ha="center", va="center", fontsize=14)
         return fig, pd.DataFrame()
 
-    top_genes_list = df[gene_col].value_counts().head(top_genes_n).index.tolist()
-    top_samples_list = df[sample_col].value_counts().head(top_samples_n).index.tolist()
+    top_genes_list = df[gene_col].value_counts().head(top_genes).index.tolist()
+    top_samples_list = df[sample_col].value_counts().head(top_samples).index.tolist()
     sub = df[df[gene_col].isin(top_genes_list) & df[sample_col].isin(top_samples_list)]
 
     if sub.empty:
@@ -178,13 +178,13 @@ def summary_statistics(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame({"Metric": ["No data"], "Value": ["—"]})
 
     stats = []
-    gene_col = "geneSymbol" if "geneSymbol" in df.columns else "hugoGeneSymbol"
+    gene_col = next((c for c in ["geneSymbol", "hugoGeneSymbol", "proteinChange", "entrezGeneId"] if c in df.columns), None)
     sample_col = "sampleId" if "sampleId" in df.columns else "uniqueSampleKey"
 
     stats.append(("Total Mutations", len(df)))
     if sample_col in df.columns:
         stats.append(("Unique Samples", df[sample_col].nunique()))
-    if gene_col in df.columns:
+    if gene_col and gene_col in df.columns:
         stats.append(("Unique Genes", df[gene_col].nunique()))
     if "mutationType" in df.columns:
         stats.append(("Mutation Types", df["mutationType"].nunique()))

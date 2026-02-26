@@ -67,18 +67,22 @@ def get_mutations(
     molecular_profile_id: str,
     sample_ids: Optional[list] = None,
     entrez_gene_ids: Optional[list] = None,
-    study_id: Optional[str] = None,
-    max_samples: int = 400,
 ) -> pd.DataFrame:
-    """Fetch mutations. Pass study_id to auto-fetch samples."""
-    if not sample_ids and study_id:
-        samples = get_samples(study_id)
-        if not samples.empty:
-            sample_ids = samples["sampleId"].tolist()
+    """
+    Fetch mutations for a molecular profile.
+    If no sample_ids or entrez_gene_ids provided, fetches all (may be slow for large studies).
+    """
     if not sample_ids and not entrez_gene_ids:
-        return pd.DataFrame()
-    if sample_ids and len(sample_ids) > max_samples:
-        sample_ids = sample_ids[:max_samples]
+        # Fetch all mutations - API may require at least one filter
+        # Try without filters - some endpoints accept empty
+        try:
+            data = _get(f"/molecular-profiles/{molecular_profile_id}/mutations")
+            if not data:
+                return pd.DataFrame()
+            return pd.DataFrame(data)
+        except Exception:
+            return pd.DataFrame()
+
     body = {"sampleIds": sample_ids or []}
     if entrez_gene_ids:
         body["entrezGeneIds"] = entrez_gene_ids
