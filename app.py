@@ -163,7 +163,6 @@ if st.sidebar.button("▶️ Run Analysis", type="primary"):
             mutations_df = get_mutations(
                 molecular_profile_id,
                 study_id=study_id,
-                max_samples=sample_limit,
             )
         except Exception as e:
             st.error(f"Error fetching mutations: {e}")
@@ -172,6 +171,9 @@ if st.sidebar.button("▶️ Run Analysis", type="primary"):
     if mutations_df.empty:
         st.warning("No mutation data returned. The dataset may be empty or require gene filters.")
         st.stop()
+
+    with st.spinner("Looking up gene symbols..."):
+        mutations_df = add_gene_symbols(mutations_df)
 
     # Limit samples for large datasets
     if "sampleId" in mutations_df.columns:
