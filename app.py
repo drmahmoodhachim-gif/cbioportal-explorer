@@ -14,7 +14,7 @@ from cbioportal_client import (
     get_samples,
     get_mutations,
     fetch_mutations_by_study,
-    add_gene_symbols,
+    HEREDITARY_BREAST_CANCER_GENES,
 )
 from visualizations import (
     ANALYSIS_TYPES,
