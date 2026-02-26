@@ -163,6 +163,7 @@ if st.sidebar.button("▶️ Run Analysis", type="primary"):
             mutations_df = get_mutations(
                 molecular_profile_id,
                 study_id=study_id,
+                max_samples=sample_limit,
             )
         except Exception as e:
             st.error(f"Error fetching mutations: {e}")
