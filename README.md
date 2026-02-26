@@ -47,17 +47,15 @@ cbioportal-explorer/
 
 ## Live App (Share with Anyone)
 
-**Deploy free on Streamlit Cloud** → [Deploy now](https://share.streamlit.io/deploy?repository=drmahmoodhachim-gif/cbioportal-explorer)
+**GitHub:** https://github.com/drmahmoodhachim-gif/cbioportal-explorer
 
-1. Sign in with GitHub
-2. Click **Deploy** (repo is pre-filled)
-3. Wait ~2 minutes. Your live URL: `https://cbioportal-explorer.streamlit.app` (or similar)
+**Deploy on Streamlit Cloud** (free, ~2 min):
+1. Go to https://share.streamlit.io
+2. Sign in with GitHub
+3. New app → Repo: `drmahmoodhachim-gif/cbioportal-explorer`, Branch: `master`, File: `app.py`
+4. Click **Deploy** → Get live URL like `https://cbioportal-explorer.streamlit.app`
 
-## GitHub
-
-**Repo:** https://github.com/drmahmoodhachim-gif/cbioportal-explorer
-
-Clone and run:
+## Clone and Run
 
 ```bash
 git clone https://github.com/drmahmoodhachim-gif/cbioportal-explorer.git

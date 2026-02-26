@@ -1,0 +1,14 @@
+name: CI
+on:
+  push:
+    branches: [master]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -c "from cbioportal_client import get_all_studies; assert len(get_all_studies()) > 0; print('OK')"
