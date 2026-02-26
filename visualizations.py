@@ -160,7 +160,7 @@ def oncoprint_style_matrix(df: pd.DataFrame, top_genes: int = 20, top_samples: i
 
     stats_df = pivot.sum(axis=1).sort_values(ascending=False).reset_index()
     stats_df.columns = ["Gene", "Samples with Mutation"]
-    stats_df["Mutation Rate (%)"] = (stats_df["Samples with Mutation"] / max(1, len(top_samples_list)) * 100).round(1)
+    stats_df["Mutation Rate (%)"] = (stats_df["Samples with Mutation"] / len(top_samples_list) * 100).round(1)
 
     fig, ax = plt.subplots(figsize=(14, max(8, len(top_genes_list) * 0.4)))
     sns.heatmap(pivot, cmap="YlOrRd", cbar_kws={"label": "Mutation"}, ax=ax, linewidths=0.5)
@@ -184,7 +184,7 @@ def summary_statistics(df: pd.DataFrame) -> pd.DataFrame:
     stats.append(("Total Mutations", len(df)))
     if sample_col in df.columns:
         stats.append(("Unique Samples", df[sample_col].nunique()))
-    if gene_col in df.columns:
+    if gene_col is not None and gene_col in df.columns:
         stats.append(("Unique Genes", df[gene_col].nunique()))
     if "mutationType" in df.columns:
         stats.append(("Mutation Types", df["mutationType"].nunique()))

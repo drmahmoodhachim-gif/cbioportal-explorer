@@ -13,7 +13,6 @@ from cbioportal_client import (
     get_molecular_profiles,
     get_samples,
     get_mutations,
-    add_gene_symbols,
 )
 from visualizations import (
     ANALYSIS_TYPES,
@@ -172,6 +171,9 @@ if st.sidebar.button("▶️ Run Analysis", type="primary"):
     if mutations_df.empty:
         st.warning("No mutation data returned. The dataset may be empty or require gene filters.")
         st.stop()
+
+    with st.spinner("Looking up gene symbols..."):
+        mutations_df = add_gene_symbols(mutations_df)
 
     # Limit samples for large datasets
     if "sampleId" in mutations_df.columns:
