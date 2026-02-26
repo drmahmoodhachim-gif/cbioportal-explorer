@@ -9,6 +9,13 @@ import pandas as pd
 
 API_BASE = "https://www.cbioportal.org/api"
 
+# Hereditary breast cancer genes (NCCN guidelines): symbol -> Entrez ID
+HEREDITARY_BREAST_CANCER_GENES = {
+    "BRCA1": 672, "BRCA2": 675, "PALB2": 79728, "TP53": 7157, "PTEN": 5728,
+    "CDH1": 999, "STK11": 6794, "ATM": 472, "CHEK2": 11200, "BARD1": 580,
+    "RAD51C": 5889, "RAD51D": 5892, "NF1": 4763,
+}
+
 
 def _get(endpoint: str, params: Optional[dict] = None) -> list:
     """GET request to cBioPortal API."""
@@ -111,20 +118,20 @@ def fetch_mutations_by_study(
     if len(sample_ids_to_use) > 500:
         sample_ids_to_use = sample_ids_to_use[:500]
 
+    body = {
+        "sampleIdentifiers": [
+            {"studyId": study_id, "sampleId": sid} for sid in sample_ids_to_use
+        ],
+    }
+
     try:
-        data = _post(f"/molecular-profiles/{molecular_profile_id}/mutations/fetch", {"sampleIds": sample_ids_to_use})
-        if data:
-            return pd.DataFrame(data)
-    except Exception:
-        pass
-    try:
-        body = {"sampleIdentifiers": [{"studyId": study_id, "sampleId": sid} for sid in sample_ids_to_use]}
         data = _post("/mutations/fetch", body)
-        if data:
-            return pd.DataFrame(data)
+        if not data:
+            return pd.DataFrame()
+        return pd.DataFrame(data)
     except Exception:
-        pass
-    return get_mutations(molecular_profile_id, sample_ids_to_use)
+        # Fallback to profile-specific endpoint
+        return get_mutations(molecular_profile_id, sample_ids_to_use)
 
 
 def get_cancer_types() -> pd.DataFrame:
