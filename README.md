@@ -45,18 +45,6 @@ cbioportal-explorer/
 └── README.md
 ```
 
-## Deploy as Live Page (Streamlit Cloud)
-
-Free hosting on [Streamlit Community Cloud](https://share.streamlit.io):
-
-1. **Push to GitHub** – Upload this repo to your GitHub account.
-2. **Go to** [share.streamlit.io](https://share.streamlit.io)
-3. **Sign in** with your GitHub account.
-4. **New app** → choose your repo, branch (e.g. `main`), and set main file to `app.py`.
-5. **Deploy** – Streamlit Cloud will build and host your app.
-
-You’ll get a live URL like `https://your-app-name.streamlit.app`.
-
 ## GitHub
 
 Clone and run:
@@ -64,8 +52,8 @@ Clone and run:
 ```bash
 git clone https://github.com/YOUR_USERNAME/cbioportal-explorer.git
 cd cbioportal-explorer
-python -m pip install -r requirements.txt
-python -m streamlit run app.py
+pip install -r requirements.txt
+streamlit run app.py
 ```
 
 ## Data Source
