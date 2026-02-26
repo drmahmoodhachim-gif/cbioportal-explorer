@@ -36,13 +36,7 @@ def get_all_studies(projection: str = "SUMMARY") -> pd.DataFrame:
 
 def get_study(study_id: str) -> dict:
     """Get details for a specific study."""
-    try:
-        r = requests.get(f"{API_BASE}/studies/{study_id}", timeout=30)
-        r.raise_for_status()
-        d = r.json()
-        return d if isinstance(d, dict) else (d[0] if d else {})
-    except Exception:
-        return {}
+    return _get(f"/studies/{study_id}")[0] if _get(f"/studies/{study_id}") else {}
 
 
 def get_molecular_profiles(study_id: str) -> pd.DataFrame:
@@ -88,6 +82,7 @@ def get_mutations(
     body = {"sampleIds": sample_ids or []}
     if entrez_gene_ids:
         body["entrezGeneIds"] = entrez_gene_ids
+
     try:
         data = _post(f"/molecular-profiles/{molecular_profile_id}/mutations/fetch", body)
         if not data:
@@ -97,43 +92,35 @@ def get_mutations(
         raise RuntimeError(f"Failed to fetch mutations: {e}") from e
 
 
-def get_genes_by_entrez(entrez_ids: list) -> pd.DataFrame:
-    """Fetch gene info by Entrez IDs. Returns hugoGeneSymbol."""
-    if not entrez_ids:
+def fetch_mutations_by_study(
+    study_id: str,
+    molecular_profile_id: str,
+    sample_ids: Optional[list] = None,
+) -> pd.DataFrame:
+    """Fetch mutations using the mutations/fetch endpoint with study context."""
+    samples = get_samples(study_id)
+    if samples.empty:
         return pd.DataFrame()
-    gene_ids = [str(int(x)) for x in entrez_ids if pd.notna(x)]
-    if not gene_ids:
-        return pd.DataFrame()
+
+    sample_ids_to_use = sample_ids or samples["sampleId"].tolist()
+    # Limit to avoid timeout on very large studies
+    if len(sample_ids_to_use) > 500:
+        sample_ids_to_use = sample_ids_to_use[:500]
+
+    body = {
+        "sampleIdentifiers": [
+            {"studyId": study_id, "sampleId": sid} for sid in sample_ids_to_use
+        ],
+    }
+
     try:
-        data = requests.post(
-            f"{API_BASE}/genes/fetch",
-            json=gene_ids[:500],
-            params={"geneIdType": "ENTREZ_GENE_ID"},
-            timeout=30,
-        ).json()
-        return pd.DataFrame(data) if data else pd.DataFrame()
+        data = _post("/mutations/fetch", body)
+        if not data:
+            return pd.DataFrame()
+        return pd.DataFrame(data)
     except Exception:
-        return pd.DataFrame()
-
-
-def add_gene_symbols(mutations_df: pd.DataFrame) -> pd.DataFrame:
-    """Add geneSymbol column by looking up entrezGeneId via cBioPortal API."""
-    if mutations_df.empty or "entrezGeneId" not in mutations_df.columns:
-        return mutations_df
-    entrez_ids = mutations_df["entrezGeneId"].dropna().unique().astype(int).tolist()
-    if not entrez_ids:
-        return mutations_df
-    genes_df = get_genes_by_entrez(entrez_ids)
-    if genes_df.empty or "hugoGeneSymbol" not in genes_df.columns:
-        mutations_df = mutations_df.copy()
-        mutations_df["geneSymbol"] = mutations_df["entrezGeneId"].astype(str)
-        return mutations_df
-    gene_map = genes_df.set_index("entrezGeneId")["hugoGeneSymbol"].to_dict()
-    mutations_df = mutations_df.copy()
-    mutations_df["geneSymbol"] = mutations_df["entrezGeneId"].map(
-        lambda x: gene_map.get(int(x), str(x))
-    )
-    return mutations_df
+        # Fallback to profile-specific endpoint
+        return get_mutations(molecular_profile_id, sample_ids_to_use)
 
 
 def get_cancer_types() -> pd.DataFrame:
