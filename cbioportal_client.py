@@ -635,14 +635,37 @@ DEG_ENTREZ_MAP = {
 }
 
 
+def _get_sample_ids_from_list(sample_list_id: str, max_samples: int = 300) -> list:
+    """Get sample IDs from a sample list, limited for speed."""
+    try:
+        r = requests.get(f"{API_BASE}/sample-lists/{sample_list_id}", timeout=15)
+        if not r.ok or not r.text:
+            return []
+        obj = r.json()
+        return (obj.get("sampleIds") or [])[:max_samples]
+    except Exception:
+        return []
+
+
 def get_molecular_data(
     molecular_profile_id: str,
     sample_list_id: str,
     entrez_gene_ids: list,
+    study_id: Optional[str] = None,
+    max_samples: int = 300,
 ) -> pd.DataFrame:
-    """Fetch molecular (e.g. expression) data for genes."""
+    """Fetch molecular (e.g. expression) data. Limits to 300 samples for speed."""
     try:
-        body = {"sampleListId": sample_list_id, "entrezGeneIds": entrez_gene_ids}
+        sample_ids = []
+        if study_id and max_samples < 10000:
+            sample_ids = _get_sample_ids_from_list(sample_list_id, max_samples)
+        if sample_ids:
+            body = {
+                "sampleIdentifiers": [{"studyId": study_id, "sampleId": s} for s in sample_ids],
+                "entrezGeneIds": entrez_gene_ids,
+            }
+        else:
+            body = {"sampleListId": sample_list_id, "entrezGeneIds": entrez_gene_ids}
         data = _post(f"/molecular-profiles/{molecular_profile_id}/molecular-data/fetch", body)
         if not data:
             return pd.DataFrame()
@@ -732,7 +755,7 @@ def fetch_deg_downstream(
     if not down_entrez:
         return pd.DataFrame(), "No downstream genes resolved"
 
-    expr_df = get_molecular_data(expr_profile_id, sample_list_id, [e for e, _ in down_entrez])
+    expr_df = get_molecular_data(expr_profile_id, sample_list_id, [e for e, _ in down_entrez], study_id=study_id, max_samples=300)
     if expr_df.empty:
         return pd.DataFrame(), "No expression data"
     # API returns sampleId, value; gene id as entrezGeneId or geneId
@@ -874,7 +897,7 @@ def fetch_deg_full(
     if not down_entrez:
         return pd.DataFrame(), group_counts, "No genes resolved for DEG"
 
-    expr_df = get_molecular_data(expr_profile_id, sample_list_id, [e for e, _ in down_entrez])
+    expr_df = get_molecular_data(expr_profile_id, sample_list_id, [e for e, _ in down_entrez], study_id=study_id, max_samples=300)
     if expr_df.empty:
         return pd.DataFrame(), group_counts, "No expression data"
     id_col = "entrezGeneId" if "entrezGeneId" in expr_df.columns else "geneId"
