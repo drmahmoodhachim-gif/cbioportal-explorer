@@ -54,7 +54,7 @@ st.set_page_config(
     page_title="cBioPortal Explorer",
     page_icon="🧬",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",  # Collapses on mobile for more space
 )
 
 st.markdown("""
@@ -66,6 +66,16 @@ st.markdown("""
     .data-source-banner { background: #fff8e6; border: 1px solid #f0d675; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; font-size: 0.9rem; }
     .data-source-banner a { color: #1E3A5F; font-weight: 600; }
     .footer-legal { font-size: 0.75rem; color: #6b7280; margin-top: 2rem; padding: 1rem; border-top: 1px solid #e5e7eb; }
+    /* Mobile-friendly */
+    @media (max-width: 768px) {
+        .banner-top { padding: 0.9rem 1rem; margin-bottom: 0.75rem; }
+        .banner-top h1 { font-size: 1.25rem; }
+        .banner-top p { font-size: 0.85rem; }
+        .welcome-box { padding: 0.75rem 1rem; font-size: 0.85rem; }
+    }
+    /* Scrollable tables on small screens */
+    .stDataFrame { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+    div[data-testid="stHorizontalBlock"] > div { min-width: 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -86,18 +96,17 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# cBioPortal data source attribution (per cBioPortal requirements for legal protection)
-st.markdown("""
-<div class="data-source-banner">
-    <strong>📊 Data Source:</strong> All genomic data is retrieved from 
-    <a href="https://www.cbioportal.org" target="_blank">cBioPortal for Cancer Genomics</a> via their public API.
-    This tool does not host or store data; it fetches data on demand from cBioPortal.<br><br>
-    <strong>Citation (required when using cBioPortal data):</strong><br>
-    • Cerami E, et al. The cBio Cancer Genomics Portal: An Open Platform for Exploring Multidimensional Cancer Genomics Data. <em>Cancer Discovery</em>. 2012;2(5):401-404.<br>
-    • Gao J, et al. Integrative Analysis of Complex Cancer Genomics and Clinical Profiles Using the cBioPortal. <em>Science Signaling</em>. 2013;6(269):pl1.<br>
-    <small>Full citation info: <a href="https://docs.cbioportal.org/user-guide/faq/#how-do-i-cite-the-cbioportal" target="_blank">cBioPortal Citation Guide</a></small>
-</div>
-""", unsafe_allow_html=True)
+# cBioPortal data source attribution (collapsible to save space on mobile)
+with st.expander("📊 Data source & citation", expanded=False):
+    st.markdown("""
+    **Data Source:** All genomic data is retrieved from [cBioPortal](https://www.cbioportal.org) via their public API.
+    This tool does not host or store data; it fetches data on demand.
+
+    **Citation (required when using cBioPortal data):**
+    - Cerami E, et al. The cBio Cancer Genomics Portal. *Cancer Discovery*. 2012;2(5):401-404.
+    - Gao J, et al. Integrative Analysis Using the cBioPortal. *Science Signaling*. 2013;6(269):pl1.
+    - [Full citation guide](https://docs.cbioportal.org/user-guide/faq/#how-do-i-cite-the-cbioportal)
+    """)
 
 st.sidebar.header("📋 Mode")
 mode = st.sidebar.radio("Choose analysis mode", [
