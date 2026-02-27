@@ -174,10 +174,12 @@ def fetch_mutations_by_study(
 
 
 def get_entrez_id(gene_symbol: str) -> Optional[int]:
-    """Resolve Hugo gene symbol to Entrez Gene ID via cBioPortal API."""
+    """Resolve Hugo symbol to Entrez ID. Uses static map first (fast); API fallback."""
     if not gene_symbol or not str(gene_symbol).strip():
         return None
     sym = str(gene_symbol).strip().upper()
+    if sym in DEG_ENTREZ_MAP:
+        return DEG_ENTREZ_MAP[sym]
     try:
         data = _get("/genes", params={"keyword": sym, "pageSize": 10})
         for g in data or []:
@@ -616,6 +618,22 @@ DEG_GENES_FULL = list(dict.fromkeys(
        "RAD51", "RAD51C", "RAD51D", "MRE11", "RAD50", "NBN", "BARD1"]
 ))
 
+# Static symbol->entrez for DEG (no API calls = fast)
+DEG_ENTREZ_MAP = {
+    **{k.upper(): v for k, v in HEREDITARY_BREAST_CANCER_GENES.items()},
+    "CDKN1A": 1026, "E2F1": 1869, "MAPK1": 5594, "PIK3CA": 5290, "AKT1": 207,
+    "MDM2": 4193, "BAX": 581, "BBC3": 27113, "CDK4": 1019, "CCND1": 595,
+    "RAF1": 5894, "SOS1": 6654, "GRB2": 2885, "BRAF": 673, "KRAS": 3845,
+    "NRAS": 4893, "MAPK3": 5595, "MAP2K1": 5604, "MAP2K2": 5605,
+    "BCL2": 596, "BCL2L1": 598, "BAD": 572, "CDK6": 1021, "CDK2": 1017,
+    "RB1": 5925, "EGFR": 1956, "ERBB3": 2065, "MTOR": 2475,
+    "RAD51": 5888, "MRE11": 4361, "RAD50": 10111, "NBN": 4683,
+    "CDKN2A": 1029, "FOXA1": 3169, "GATA3": 2625, "PGR": 5241,
+    "GREB1": 9687, "TFF1": 7031, "GSK3B": 2932, "FOXO1": 2308,
+    "ELK1": 2002, "JUN": 3725, "RPS6KB1": 6198, "TSC2": 7249,
+    "WNT3A": 89780, "RASA1": 5921,
+}
+
 
 def get_molecular_data(
     molecular_profile_id: str,
@@ -848,8 +866,9 @@ def fetch_deg_full(
     cnt = Counter(sample_groups.values())
     group_counts = pd.DataFrame([{"Group": k, "N": v} for k, v in sorted(cnt.items())])
 
-    # Gene set: DEG_GENES_FULL minus query gene
-    genes_to_test = [g for g in DEG_GENES_FULL if g.upper() != gene_symbol.upper()]
+    # Use gene-specific downstream (faster) instead of full panel
+    genes_to_test = [g for g in (DOWNSTREAM_GENES.get(gene_symbol.upper(), DEFAULT_DOWNSTREAM) + ["TP53", "BRCA1", "MYC", "BCL2", "CDKN1A"]) if g.upper() != gene_symbol.upper()]
+    genes_to_test = list(dict.fromkeys(genes_to_test))
     down_entrez = [(get_entrez_id(g), g) for g in genes_to_test]
     down_entrez = [(e, s) for e, s in down_entrez if e]
     if not down_entrez:
