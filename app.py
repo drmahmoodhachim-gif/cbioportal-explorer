@@ -44,21 +44,43 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .main-header { font-size: 2.2rem; font-weight: 700; color: #1E3A5F; margin-bottom: 0.5rem; }
-    .sub-header { color: #5A7A9A; font-size: 1rem; margin-bottom: 0.5rem; }
-    .welcome-box { background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%); padding: 1rem 1.5rem; border-radius: 8px; border-left: 4px solid #1E3A5F; margin-bottom: 1.5rem; }
+    .banner-top { background: linear-gradient(135deg, #0f4c81 0%, #1E3A5F 50%, #2d5a87 100%); color: white; padding: 1.25rem 1.5rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .banner-top h1 { margin: 0; font-size: 1.8rem; font-weight: 700; }
+    .banner-top p { margin: 0.25rem 0 0 0; font-size: 0.95rem; opacity: 0.95; }
+    .welcome-box { background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%); padding: 1rem 1.5rem; border-radius: 8px; border-left: 4px solid #1E3A5F; margin-bottom: 1rem; }
+    .data-source-banner { background: #fff8e6; border: 1px solid #f0d675; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; font-size: 0.9rem; }
+    .data-source-banner a { color: #1E3A5F; font-weight: 600; }
     .footer-legal { font-size: 0.75rem; color: #6b7280; margin-top: 2rem; padding: 1rem; border-top: 1px solid #e5e7eb; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="main-header">🧬 cBioPortal Explorer – Breast Cancer</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Mutation analysis for breast cancer genomics with hereditary gene panels</p>', unsafe_allow_html=True)
+# Main banner
+st.markdown("""
+<div class="banner-top">
+    <h1>🧬 cBioPortal Explorer – Breast Cancer</h1>
+    <p>Mutation analysis for breast cancer genomics with hereditary gene panels</p>
+</div>
+""", unsafe_allow_html=True)
 
+# Welcome / Author banner
 st.markdown(f"""
 <div class="welcome-box">
     <strong>Welcome to the tool.</strong><br>
     Developed by <strong>{AUTHOR_NAME}</strong> — {AUTHOR_TITLE}<br>
     <small>{AUTHOR_AFFILIATION} • <a href="mailto:{AUTHOR_EMAIL}">{AUTHOR_EMAIL}</a></small>
+</div>
+""", unsafe_allow_html=True)
+
+# cBioPortal data source attribution (per cBioPortal requirements for legal protection)
+st.markdown("""
+<div class="data-source-banner">
+    <strong>📊 Data Source:</strong> All genomic data is retrieved from 
+    <a href="https://www.cbioportal.org" target="_blank">cBioPortal for Cancer Genomics</a> via their public API.
+    This tool does not host or store data; it fetches data on demand from cBioPortal.<br><br>
+    <strong>Citation (required when using cBioPortal data):</strong><br>
+    • Cerami E, et al. The cBio Cancer Genomics Portal: An Open Platform for Exploring Multidimensional Cancer Genomics Data. <em>Cancer Discovery</em>. 2012;2(5):401-404.<br>
+    • Gao J, et al. Integrative Analysis of Complex Cancer Genomics and Clinical Profiles Using the cBioPortal. <em>Science Signaling</em>. 2013;6(269):pl1.<br>
+    <small>Full citation info: <a href="https://docs.cbioportal.org/user-guide/faq/#how-do-i-cite-the-cbioportal" target="_blank">cBioPortal Citation Guide</a></small>
 </div>
 """, unsafe_allow_html=True)
 
@@ -124,16 +146,23 @@ sample_limit = st.sidebar.slider("Max samples to analyze (for speed)", 50, 500, 
 top_n = st.sidebar.slider("Top N items in charts", 5, 50, 20)
 
 st.sidebar.divider()
-st.sidebar.caption("Data from [cBioPortal](https://www.cbioportal.org)")
+st.sidebar.markdown("**Data from [cBioPortal](https://www.cbioportal.org)** (see attribution below)")
 
-with st.sidebar.expander("© Legal & Property", expanded=False):
+with st.sidebar.expander("© Legal & Data Usage", expanded=False):
     st.markdown(f"""
     **Copyright © {AUTHOR_NAME}. All rights reserved.**
 
-    - This software and its content are the exclusive property of the author.
-    - Unauthorized copying, modification, distribution, or use is strictly prohibited.
-    - For permission to use, reproduce, or cite, contact: **{AUTHOR_EMAIL}**
-    - **Disclaimer:** This tool is for research and educational purposes only. It is not intended for clinical decision-making. Always consult qualified healthcare professionals for medical advice.
+    **This Tool:**
+    - This software is the exclusive property of the author.
+    - Unauthorized copying, modification, or distribution is prohibited.
+    - Contact: **{AUTHOR_EMAIL}**
+
+    **Data (cBioPortal):**
+    - Genomic data is sourced from cBioPortal. Users must cite cBioPortal per their [citation guidelines](https://docs.cbioportal.org/user-guide/faq/#how-do-i-cite-the-cbioportal).
+    - This tool does not guarantee data accuracy; refer to original studies and cBioPortal.
+
+    **Medical Disclaimer:**
+    This tool is for **research and educational purposes only**. It is NOT intended for clinical decision-making. Always consult qualified healthcare professionals for medical advice.
     """)
 
 if st.sidebar.button("▶️ Run Analysis", type="primary"):
@@ -194,6 +223,7 @@ else:
 st.divider()
 st.markdown(f"""
 <div class="footer-legal">
-    © {AUTHOR_NAME} | All rights reserved. This tool is proprietary. No unauthorized use, reproduction, or distribution permitted. Contact: {AUTHOR_EMAIL}
+    <strong>© {AUTHOR_NAME}</strong> | All rights reserved. Data from <a href="https://www.cbioportal.org">cBioPortal</a> — cite per their guidelines. 
+    Research use only; not for clinical decisions. Contact: {AUTHOR_EMAIL}
 </div>
 """, unsafe_allow_html=True)
