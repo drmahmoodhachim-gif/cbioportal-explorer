@@ -92,20 +92,43 @@ def get_mutations(
     molecular_profile_id: str,
     sample_ids: Optional[list] = None,
     entrez_gene_ids: Optional[list] = None,
+    sample_list_id: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Fetch mutations for a molecular profile.
-    If no sample_ids or entrez_gene_ids provided, fetches all (may be slow for large studies).
+    Prefer sample_list_id (queries ALL samples in list) over sample_ids (limited).
     """
-    if not sample_ids and not entrez_gene_ids:
+    # Use GET with sampleListId to query all samples - matches cBioPortal's full query
+    if sample_list_id and entrez_gene_ids:
         try:
-            data = _get(f"/molecular-profiles/{molecular_profile_id}/mutations")
-            if not data:
-                return pd.DataFrame()
-            return pd.DataFrame(data)
+            all_data = []
+            page = 0
+            page_size = 10000
+            while True:
+                data = _get(
+                    f"/molecular-profiles/{molecular_profile_id}/mutations",
+                    params={
+                        "sampleListId": sample_list_id,
+                        "entrezGeneId": entrez_gene_ids[0],
+                        "projection": "SUMMARY",
+                        "pageSize": page_size,
+                        "pageNumber": page,
+                    },
+                )
+                if not data:
+                    break
+                all_data.extend(data)
+                if len(data) < page_size:
+                    break
+                page += 1
+            if all_data:
+                return pd.DataFrame(all_data)
         except Exception:
-            return pd.DataFrame()
+            pass
 
+    # Fallback: POST fetch with sample IDs (limited to provided list)
+    if not sample_ids and sample_list_id:
+        return pd.DataFrame()
     body = {"sampleIds": sample_ids or []}
     if entrez_gene_ids:
         body["entrezGeneIds"] = entrez_gene_ids
@@ -164,15 +187,30 @@ def get_entrez_id(gene_symbol: str) -> Optional[int]:
     return None
 
 
+def _pick_sample_list_for_mutations(sample_lists_df: pd.DataFrame, study_id: str) -> Optional[str]:
+    """Pick sample list that covers all/cases with mutation data. Prefer sequenced > cnaseq > all."""
+    if sample_lists_df.empty or "sampleListId" not in sample_lists_df.columns:
+        return None
+    sl = sample_lists_df
+    # Prefer: sequenced (mutation data), cnaseq (mutation+cna), all
+    for pat in ["sequenced", "cnaseq", "mutation", "all"]:
+        m = sl["sampleListId"].str.lower().str.contains(pat, na=False)
+        if m.any():
+            cand = sl[m].iloc[0]["sampleListId"]
+            return str(cand)
+    return sl.iloc[0]["sampleListId"] if len(sl) > 0 else None
+
+
 def fetch_gene_across_studies(
     gene_symbol: str,
     studies_df: pd.DataFrame,
     max_studies: int = 50,
-    samples_per_study: int = 200,
+    samples_per_study: int = 2000,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Fetch mutations for a gene across breast cancer studies.
-    Returns (mutations_df with studyId, study_counts_df for bar plot).
+    Uses sample lists to query ALL samples per study (matches cBioPortal).
+    Fallback: sample_ids if no suitable list (limited to samples_per_study).
     """
     entrez = get_entrez_id(gene_symbol)
     if not entrez:
@@ -196,12 +234,25 @@ def fetch_gene_across_studies(
         profile_id = mut_profiles.iloc[0].get("molecularProfileId")
         if not profile_id:
             continue
-        samples = get_samples(sid)
-        if samples.empty:
-            continue
-        sample_ids = samples["sampleId"].head(samples_per_study).tolist()
+        sample_list_id = None
         try:
-            df = get_mutations(profile_id, sample_ids=sample_ids, entrez_gene_ids=[entrez])
+            sample_lists = get_sample_lists(sid)
+            sample_list_id = _pick_sample_list_for_mutations(sample_lists, sid)
+        except Exception:
+            pass
+        try:
+            if sample_list_id:
+                df = get_mutations(
+                    profile_id,
+                    sample_list_id=sample_list_id,
+                    entrez_gene_ids=[entrez],
+                )
+            else:
+                samples = get_samples(sid)
+                if samples.empty:
+                    continue
+                sample_ids = samples["sampleId"].head(samples_per_study).tolist()
+                df = get_mutations(profile_id, sample_ids=sample_ids, entrez_gene_ids=[entrez])
             if not df.empty:
                 df = _add_gene_symbols(df)
                 df["studyId"] = sid

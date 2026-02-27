@@ -129,6 +129,7 @@ if studies_df.empty:
 
 if mode == "Gene Search Across Studies":
     st.subheader("🔍 Gene Search Across All Breast Cancer Studies")
+    st.caption("Queries all sequenced samples per study (matches cBioPortal scope). Breast cancer studies only.")
     gene_input = st.text_input("Enter gene symbol (e.g., BRCA1, TP53, PIK3CA)", value="BRCA1", key="gene_search")
     max_studies_search = st.sidebar.slider("Max studies to query", 5, 80, 30, key="max_studies_search")
     if st.button("🔍 Search Gene", type="primary", key="btn_gene_search"):
