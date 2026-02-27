@@ -14,9 +14,4 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: python -c "
-from cbioportal_client import get_all_studies, get_molecular_profiles
-s = get_all_studies(projection='SUMMARY')
-assert len(s) > 0
-print('API OK')
-"
+      - run: python -c "from cbioportal_client import get_all_studies; s = get_all_studies(projection='SUMMARY'); assert len(s) > 0; print('API OK')"

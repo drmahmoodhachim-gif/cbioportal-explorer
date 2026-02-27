@@ -20,6 +20,7 @@ from cbioportal_client import (
     fetch_mutations_by_study,
     fetch_gene_across_studies,
     fetch_survival_data_for_gene,
+    filter_studies_with_survival,
 )
 from visualizations import (
     ANALYSIS_TYPES,
@@ -109,6 +110,16 @@ def load_breast_cancer_studies():
         st.error(f"Failed to load studies: {e}")
         return pd.DataFrame()
 
+
+@st.cache_data(ttl=3600)
+def load_breast_cancer_studies_with_survival():
+    """Breast cancer studies that have patient-level survival data (OS/DFS/PFS/RFS)."""
+    df = load_breast_cancer_studies()
+    if df.empty:
+        return df
+    return filter_studies_with_survival(df)
+
+
 studies_df = load_breast_cancer_studies()
 if studies_df.empty:
     st.warning("Could not load breast cancer studies from cBioPortal.")
@@ -148,8 +159,12 @@ if mode == "Gene Search Across Studies":
             st.download_button("Download all mutations (CSV)", muts_df.to_csv(index=False), file_name=f"{gene_input}_across_studies.csv", mime="text/csv", key="dl_gene_muts")
 elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
     st.subheader("📈 Survival by Mutation Type (GoF vs LoF vs Wild Type)")
-    st.markdown("Compare **Gain of Function** (missense, in-frame), **Loss of Function** (nonsense, frameshift, splice), and **Wild Type** (no mutation) for a gene. Requires study with survival data (OS_MONTHS/OS_STATUS, etc.).")
-    surv_study_options = {f"{r.get('name','')} ({r.get('studyId','')})": r.get("studyId") for _, r in studies_df.iterrows()}
+    st.markdown("Compare **Gain of Function** (missense, in-frame), **Loss of Function** (nonsense, frameshift, splice), and **Wild Type** (no mutation) for a gene. Only studies with survival data (OS/DFS/PFS/RFS) are shown.")
+    surv_studies_df = load_breast_cancer_studies_with_survival()
+    if surv_studies_df.empty:
+        st.warning("No breast cancer studies with survival data found in cBioPortal.")
+        st.stop()
+    surv_study_options = {f"{r.get('name','')} ({r.get('studyId','')})": r.get("studyId") for _, r in surv_studies_df.iterrows()}
     surv_study_label = st.selectbox("Select study (with survival data)", options=list(surv_study_options.keys()), key="surv_study")
     surv_study_id = surv_study_options[surv_study_label]
     surv_profiles_df = get_molecular_profiles(surv_study_id)

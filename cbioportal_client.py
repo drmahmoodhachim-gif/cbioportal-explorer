@@ -4,6 +4,7 @@ API docs: https://www.cbioportal.org/api/swagger-ui/index.html
 """
 
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Tuple
 import pandas as pd
 
@@ -217,10 +218,58 @@ def fetch_gene_across_studies(
     return muts_df, counts_df
 
 
-def get_clinical_data(study_id: str) -> pd.DataFrame:
-    """Fetch clinical data for a study (patient-level attributes)."""
+# Survival attribute pairs: (time_col, event_col) - both must be patient-level
+_SURVIVAL_ATTR_PAIRS = [
+    ("OS_MONTHS", "OS_STATUS"),
+    ("DFS_MONTHS", "DFS_STATUS"),
+    ("PFS_MONTHS", "PFS_STATUS"),
+    ("RFS_MONTHS", "RFS_STATUS"),
+    ("DSS_MONTHS", "DSS_STATUS"),
+]
+
+
+def study_has_survival_data(study_id: str) -> bool:
+    """Check if a study has patient-level survival attributes (OS, DFS, PFS, RFS, or DSS)."""
     try:
-        data = _get(f"/studies/{study_id}/clinical-data", params={"projection": "SUMMARY"})
+        data = _get(f"/studies/{study_id}/clinical-attributes", params={"projection": "SUMMARY"})
+        if not data:
+            return False
+        attr_ids = {a.get("clinicalAttributeId") for a in data if a.get("patientAttribute")}
+        for time_id, event_id in _SURVIVAL_ATTR_PAIRS:
+            if time_id in attr_ids and event_id in attr_ids:
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def filter_studies_with_survival(studies_df: pd.DataFrame) -> pd.DataFrame:
+    """Return only studies that have patient-level survival data."""
+    if studies_df.empty:
+        return studies_df
+    study_ids = studies_df["studyId"].tolist()
+    has_survival = {}
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futures = {ex.submit(study_has_survival_data, sid): sid for sid in study_ids}
+        for f in as_completed(futures):
+            sid = futures[f]
+            try:
+                has_survival[sid] = f.result()
+            except Exception:
+                has_survival[sid] = False
+    mask = studies_df["studyId"].map(lambda x: has_survival.get(x, False))
+    return studies_df[mask].reset_index(drop=True)
+
+
+def get_clinical_data(study_id: str, clinical_data_type: str = "SAMPLE") -> pd.DataFrame:
+    """Fetch clinical data for a study.
+    clinical_data_type: 'PATIENT' for survival (OS_MONTHS, OS_STATUS, etc.), 'SAMPLE' for sample-level.
+    """
+    try:
+        params = {"projection": "SUMMARY", "pageSize": 100000}
+        if clinical_data_type and clinical_data_type.upper() in ("PATIENT", "SAMPLE"):
+            params["clinicalDataType"] = clinical_data_type.upper()
+        data = _get(f"/studies/{study_id}/clinical-data", params=params)
         if not data:
             return pd.DataFrame()
         df = pd.DataFrame(data)
@@ -259,7 +308,8 @@ def fetch_survival_data_for_gene(
     except Exception:
         pass
 
-    clinical = get_clinical_data(study_id)
+    # Survival attributes (OS_MONTHS, OS_STATUS, etc.) are patient-level; use clinicalDataType=PATIENT
+    clinical = get_clinical_data(study_id, clinical_data_type="PATIENT")
     if clinical.empty:
         return pd.DataFrame(), pd.DataFrame(), "", "No clinical data"
 
