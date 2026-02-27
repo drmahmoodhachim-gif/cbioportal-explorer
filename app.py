@@ -4,6 +4,7 @@ Explore studies, datasets, run mutations, and export figures + tables.
 """
 
 import sys
+import inspect
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -242,7 +243,11 @@ elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
             st.error("No mutation profile selected.")
         else:
             with st.spinner("Fetching survival data..."):
-                surv_df, surv_counts, time_col, err = fetch_survival_data_for_gene(surv_study_id, surv_profile_id, surv_gene_input, max_samples=surv_max_samples)
+                sig = inspect.signature(fetch_survival_data_for_gene)
+                if "max_samples" in sig.parameters:
+                    surv_df, surv_counts, time_col, err = fetch_survival_data_for_gene(surv_study_id, surv_profile_id, surv_gene_input, max_samples=surv_max_samples)
+                else:
+                    surv_df, surv_counts, time_col, err = fetch_survival_data_for_gene(surv_study_id, surv_profile_id, surv_gene_input)
             if err:
                 st.warning(err)
             else:
@@ -443,7 +448,11 @@ This tool is for **research and educational purposes only**. It is NOT intended 
     if st.sidebar.button("▶️ Run Analysis", type="primary"):
         with st.spinner("Fetching mutation data..."):
             try:
-                mutations_df = fetch_mutations_by_study(study_id, molecular_profile_id, max_samples=sample_limit)
+                sig = inspect.signature(fetch_mutations_by_study)
+                if "max_samples" in sig.parameters:
+                    mutations_df = fetch_mutations_by_study(study_id, molecular_profile_id, max_samples=sample_limit)
+                else:
+                    mutations_df = fetch_mutations_by_study(study_id, molecular_profile_id)
             except Exception as e:
                 st.error(f"Error fetching mutations: {e}")
                 st.stop()
