@@ -29,6 +29,11 @@ from visualizations import (
     summary_statistics,
 )
 
+# Owner info – replace with your details
+AUTHOR_NAME = "Dr. Mahmood Hachim"
+AUTHOR_ADDRESS = "[Your full address]"
+AUTHOR_EMAIL = "[Your email address]"
+
 st.set_page_config(
     page_title="cBioPortal Explorer",
     page_icon="🧬",
@@ -39,12 +44,22 @@ st.set_page_config(
 st.markdown("""
 <style>
     .main-header { font-size: 2.2rem; font-weight: 700; color: #1E3A5F; margin-bottom: 0.5rem; }
-    .sub-header { color: #5A7A9A; font-size: 1rem; margin-bottom: 2rem; }
+    .sub-header { color: #5A7A9A; font-size: 1rem; margin-bottom: 0.5rem; }
+    .welcome-box { background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%); padding: 1rem 1.5rem; border-radius: 8px; border-left: 4px solid #1E3A5F; margin-bottom: 1.5rem; }
+    .footer-legal { font-size: 0.75rem; color: #6b7280; margin-top: 2rem; padding: 1rem; border-top: 1px solid #e5e7eb; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-header">🧬 cBioPortal Explorer – Breast Cancer</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">Mutation analysis for breast cancer genomics with hereditary gene panels</p>', unsafe_allow_html=True)
+
+st.markdown(f"""
+<div class="welcome-box">
+    <strong>Welcome to the tool.</strong><br>
+    This application was developed by <strong>{AUTHOR_NAME}</strong>.<br>
+    <small>Address: {AUTHOR_ADDRESS} • Email: <a href="mailto:{AUTHOR_EMAIL}">{AUTHOR_EMAIL}</a></small>
+</div>
+""", unsafe_allow_html=True)
 
 st.sidebar.header("📋 Data Selection")
 
@@ -110,6 +125,16 @@ top_n = st.sidebar.slider("Top N items in charts", 5, 50, 20)
 st.sidebar.divider()
 st.sidebar.caption("Data from [cBioPortal](https://www.cbioportal.org)")
 
+with st.sidebar.expander("© Legal & Property", expanded=False):
+    st.markdown(f"""
+    **Copyright © {AUTHOR_NAME}. All rights reserved.**
+
+    - This software and its content are the exclusive property of the author.
+    - Unauthorized copying, modification, distribution, or use is strictly prohibited.
+    - For permission to use, reproduce, or cite, contact: **{AUTHOR_EMAIL}**
+    - **Disclaimer:** This tool is for research and educational purposes only. It is not intended for clinical decision-making. Always consult qualified healthcare professionals for medical advice.
+    """)
+
 if st.sidebar.button("▶️ Run Analysis", type="primary"):
     with st.spinner("Fetching mutation data..."):
         try:
@@ -164,3 +189,10 @@ if st.sidebar.button("▶️ Run Analysis", type="primary"):
 else:
     st.info("👆 Select study, dataset, and analysis, then click **Run Analysis**.")
     st.markdown("### Quick Start\n- **Study**: Pick a cancer cohort\n- **Dataset**: Mutation profile\n- **Analysis**: Figure type\n\nFigures at **300 DPI** for publication.")
+
+st.divider()
+st.markdown(f"""
+<div class="footer-legal">
+    © {AUTHOR_NAME} | All rights reserved. This tool is proprietary. No unauthorized use, reproduction, or distribution permitted. Contact: {AUTHOR_EMAIL}
+</div>
+""", unsafe_allow_html=True)
