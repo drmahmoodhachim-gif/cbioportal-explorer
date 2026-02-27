@@ -55,10 +55,12 @@ def mutation_type_distribution(df: pd.DataFrame, top_n: int = 15) -> Tuple[plt.F
     return fig, stats_df
 
 
-def gene_mutation_frequency(df: pd.DataFrame, top_n: int = 20) -> Tuple[plt.Figure, pd.DataFrame]:
+def gene_mutation_frequency(df: pd.DataFrame, top_n: int = 20, title: Optional[str] = None) -> Tuple[plt.Figure, pd.DataFrame]:
     """Bar chart of most frequently mutated genes with statistics."""
     _setup_style()
     gene_col = "geneSymbol" if "geneSymbol" in df.columns else "hugoGeneSymbol"
+    if gene_col not in df.columns and "entrezGeneId" in df.columns:
+        gene_col = "entrezGeneId"
     if df.empty or gene_col not in df.columns:
         fig, ax = plt.subplots(figsize=FIG_SIZE)
         ax.text(0.5, 0.5, "No gene data available", ha="center", va="center", fontsize=14)
@@ -77,7 +79,7 @@ def gene_mutation_frequency(df: pd.DataFrame, top_n: int = 20) -> Tuple[plt.Figu
     ax.set_yticks(range(len(gene_counts)))
     ax.set_yticklabels(gene_counts.index)
     ax.set_xlabel("Number of Mutations")
-    ax.set_title(title or "Top Mutated Genes", fontweight="bold")
+    ax.set_title((title or "Top Mutated Genes"), fontweight="bold")
     ax.invert_yaxis()
     plt.tight_layout()
     return fig, stats_df
@@ -135,10 +137,14 @@ def sample_mutation_burden(df: pd.DataFrame, top_n: int = 25) -> Tuple[plt.Figur
     return fig, stats_df
 
 
-def oncoprint_style_matrix(df: pd.DataFrame, top_genes: int = 20, top_samples: int = 30) -> Tuple[plt.Figure, pd.DataFrame]:
+def oncoprint_style_matrix(df: pd.DataFrame, top_genes: int = 20, top_samples: int = 30, top_n: Optional[int] = None, **kwargs) -> Tuple[plt.Figure, pd.DataFrame]:
     """Heatmap-style mutation matrix (gene x sample)."""
+    if top_n is not None:
+        top_genes, top_samples = top_n, min(top_n * 2, 60)
     _setup_style()
     gene_col = "geneSymbol" if "geneSymbol" in df.columns else "hugoGeneSymbol"
+    if gene_col not in df.columns and "entrezGeneId" in df.columns:
+        gene_col = "entrezGeneId"
     sample_col = "sampleId" if "sampleId" in df.columns else "uniqueSampleKey"
     if df.empty or gene_col not in df.columns or sample_col not in df.columns:
         fig, ax = plt.subplots(figsize=FIG_SIZE)
@@ -172,6 +178,35 @@ def oncoprint_style_matrix(df: pd.DataFrame, top_genes: int = 20, top_samples: i
     return fig, stats_df
 
 
+def hereditary_genes_analysis(df: pd.DataFrame, top_n: int = 20) -> Tuple[plt.Figure, pd.DataFrame]:
+    """Focus on hereditary breast cancer genes (BRCA1, BRCA2, PALB2, etc.)."""
+    from cbioportal_client import HEREDITARY_BREAST_CANCER_GENES, _add_gene_symbols
+    df = _add_gene_symbols(df.copy())
+    gene_col = "geneSymbol" if "geneSymbol" in df.columns else "hugoGeneSymbol"
+    if gene_col not in df.columns and "entrezGeneId" in df.columns:
+        gene_col = "entrezGeneId"
+    if gene_col not in df.columns:
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "No gene data available", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+    target_entrez = set(HEREDITARY_BREAST_CANCER_GENES.values())
+    if gene_col == "entrezGeneId":
+        def _in_target(x):
+            try:
+                return pd.notna(x) and int(float(x)) in target_entrez
+            except (ValueError, TypeError):
+                return False
+        sub = df[df[gene_col].apply(_in_target)]
+    else:
+        target_symbols = set(HEREDITARY_BREAST_CANCER_GENES.keys())
+        sub = df[df[gene_col].isin(target_symbols)]
+    if sub.empty:
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "No hereditary gene mutations in this dataset", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+    return gene_mutation_frequency(sub, top_n=top_n, title="Hereditary Breast Cancer Genes")
+
+
 def summary_statistics(df: pd.DataFrame) -> pd.DataFrame:
     """Generate overall statistics table."""
     if df.empty:
@@ -179,6 +214,8 @@ def summary_statistics(df: pd.DataFrame) -> pd.DataFrame:
 
     stats = []
     gene_col = "geneSymbol" if "geneSymbol" in df.columns else "hugoGeneSymbol"
+    if gene_col not in df.columns and "entrezGeneId" in df.columns:
+        gene_col = "entrezGeneId"
     sample_col = "sampleId" if "sampleId" in df.columns else "uniqueSampleKey"
 
     stats.append(("Total Mutations", len(df)))
@@ -195,6 +232,7 @@ def summary_statistics(df: pd.DataFrame) -> pd.DataFrame:
 ANALYSIS_TYPES = {
     "Mutation Type Distribution": mutation_type_distribution,
     "Top Mutated Genes": gene_mutation_frequency,
+    "Hereditary Breast Cancer Genes": hereditary_genes_analysis,
     "Variant Classification": variant_classification_distribution,
     "Sample Mutation Burden": sample_mutation_burden,
     "Mutation Matrix (Gene × Sample)": oncoprint_style_matrix,
