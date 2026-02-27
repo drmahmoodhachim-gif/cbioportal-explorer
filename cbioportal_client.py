@@ -100,18 +100,31 @@ def fetch_mutations_by_study(
     study_id: str,
     molecular_profile_id: str,
     sample_ids: Optional[list] = None,
-    max_samples: int = 500,
 ) -> pd.DataFrame:
-    """Fetch mutations via molecular profile endpoint (the one that returns data)."""
+    """Fetch mutations using the mutations/fetch endpoint with study context."""
     samples = get_samples(study_id)
     if samples.empty:
         return pd.DataFrame()
 
     sample_ids_to_use = sample_ids or samples["sampleId"].tolist()
-    if len(sample_ids_to_use) > max_samples:
-        sample_ids_to_use = sample_ids_to_use[:max_samples]
+    # Limit to avoid timeout on very large studies
+    if len(sample_ids_to_use) > 500:
+        sample_ids_to_use = sample_ids_to_use[:500]
 
-    return get_mutations(molecular_profile_id, sample_ids=sample_ids_to_use)
+    body = {
+        "sampleIdentifiers": [
+            {"studyId": study_id, "sampleId": sid} for sid in sample_ids_to_use
+        ],
+    }
+
+    try:
+        data = _post("/mutations/fetch", body)
+        if not data:
+            return pd.DataFrame()
+        return pd.DataFrame(data)
+    except Exception:
+        # Fallback to profile-specific endpoint
+        return get_mutations(molecular_profile_id, sample_ids_to_use)
 
 
 def get_cancer_types() -> pd.DataFrame:
