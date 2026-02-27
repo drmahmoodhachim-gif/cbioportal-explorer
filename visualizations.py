@@ -307,6 +307,52 @@ def lollipop_mutations(df: pd.DataFrame, gene_symbol: str) -> Tuple[plt.Figure, 
     return fig, stats_df
 
 
+def survival_plot_gof_lof(
+    surv_df: pd.DataFrame,
+    gene_symbol: str,
+    survival_type: str = "Overall Survival",
+) -> Tuple[plt.Figure, pd.DataFrame]:
+    """Kaplan-Meier survival plot: GoF vs LoF vs Wild Type."""
+    _setup_style()
+    if surv_df.empty or "group" not in surv_df.columns or "time" not in surv_df.columns or "event" not in surv_df.columns:
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "No survival data available", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+
+    try:
+        from lifelines import KaplanMeierFitter
+        from lifelines.statistics import logrank_test
+    except ImportError:
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "Install lifelines: pip install lifelines", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors = {"Loss of Function": "#e74c3c", "Gain of Function": "#3498db", "Wild Type": "#2ecc71"}
+    order = ["Wild Type", "Gain of Function", "Loss of Function"]
+    kmf = KaplanMeierFitter()
+    results = []
+
+    for grp in order:
+        if grp not in surv_df["group"].values:
+            continue
+        d = surv_df[surv_df["group"] == grp]
+        T, E = d["time"], d["event"]
+        kmf.fit(T, E, label=f"{grp} (n={len(d)})")
+        kmf.plot_survival_function(ax=ax, ci_show=True, color=colors.get(grp, "gray"))
+        results.append({"Group": grp, "N": len(d), "Events": int(E.sum())})
+
+    ax.set_xlabel("Time (months)")
+    ax.set_ylabel("Survival probability")
+    ax.set_title(f"{gene_symbol}: {survival_type} by Mutation Type", fontweight="bold")
+    ax.legend(loc="lower left")
+    ax.set_ylim(0, 1.05)
+    plt.tight_layout()
+
+    stats_df = pd.DataFrame(results) if results else pd.DataFrame()
+    return fig, stats_df
+
+
 ANALYSIS_TYPES = {
     "Mutation Type Distribution": mutation_type_distribution,
     "Top Mutated Genes": gene_mutation_frequency,

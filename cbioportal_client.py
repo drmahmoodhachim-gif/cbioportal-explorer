@@ -217,6 +217,128 @@ def fetch_gene_across_studies(
     return muts_df, counts_df
 
 
+def get_clinical_data(study_id: str) -> pd.DataFrame:
+    """Fetch clinical data for a study (patient-level attributes)."""
+    try:
+        data = _get(f"/studies/{study_id}/clinical-data", params={"projection": "SUMMARY"})
+        if not data:
+            return pd.DataFrame()
+        df = pd.DataFrame(data)
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+def fetch_survival_data_for_gene(
+    study_id: str,
+    molecular_profile_id: str,
+    gene_symbol: str,
+    sample_ids: Optional[list] = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame, str, str]:
+    """
+    Fetch mutations + clinical data for survival analysis by gene.
+    Returns (survival_df, group_counts, time_col_name, error_msg).
+    group = 'Loss of Function' | 'Gain of Function' | 'Wild Type'
+    """
+    entrez = get_entrez_id(gene_symbol)
+    if not entrez:
+        return pd.DataFrame(), pd.DataFrame(), "", f"Gene {gene_symbol} not found"
+
+    samples = get_samples(study_id)
+    if samples.empty:
+        return pd.DataFrame(), pd.DataFrame(), "", "No samples"
+    sample_ids_to_use = sample_ids or samples["sampleId"].tolist()
+    if len(sample_ids_to_use) > 500:
+        sample_ids_to_use = sample_ids_to_use[:500]
+
+    muts_df = pd.DataFrame()
+    try:
+        muts_df = get_mutations(molecular_profile_id, sample_ids=sample_ids_to_use, entrez_gene_ids=[entrez])
+        if not muts_df.empty:
+            muts_df = _add_gene_symbols(muts_df)
+    except Exception:
+        pass
+
+    clinical = get_clinical_data(study_id)
+    if clinical.empty:
+        return pd.DataFrame(), pd.DataFrame(), "", "No clinical data"
+
+    attr_ids = set(clinical["clinicalAttributeId"].unique()) if "clinicalAttributeId" in clinical.columns else set()
+    time_col = None
+    event_col = None
+    for t in ["OS_MONTHS", "DFS_MONTHS", "PFS_MONTHS", "RFS_MONTHS", "DAYS_TO_LAST_FOLLOWUP", "DSS_MONTHS"]:
+        if t in attr_ids:
+            time_col = t
+            break
+    for e in ["OS_STATUS", "DFS_STATUS", "PFS_STATUS", "RFS_STATUS", "DSS_STATUS"]:
+        if e in attr_ids:
+            event_col = e
+            break
+    if not time_col or not event_col:
+        return pd.DataFrame(), pd.DataFrame(), "", "No survival data (looked for OS/DFS/PFS/RFS)"
+
+    idx = "patientId" if "patientId" in clinical.columns else "sampleId"
+    piv = clinical.pivot_table(
+        index=idx,
+        columns="clinicalAttributeId",
+        values="value",
+        aggfunc="first",
+    ).reset_index()
+    id_col = idx
+    if time_col not in piv.columns or event_col not in piv.columns:
+        return pd.DataFrame(), pd.DataFrame(), "", f"Missing {time_col} or {event_col}"
+
+    sample_to_patient = samples.set_index("sampleId")["patientId"].to_dict() if "patientId" in samples.columns else {}
+    if not sample_to_patient:
+        sample_to_patient = {s: s for s in sample_ids_to_use}
+
+    LOF_TYPES = {
+        "frame_shift_del", "frame_shift_ins", "nonsense_mutation", "splice_site",
+        "nonstop_mutation", "de_novo_start_outofframe", "start_codon_snp",
+    }
+    GOF_TYPES = {"missense_mutation", "in_frame_del", "in_frame_ins", "missense_variant"}
+
+    def _classify(mut_type):
+        mt = str(mut_type).lower().replace(" ", "_") if pd.notna(mut_type) else ""
+        if mt in LOF_TYPES:
+            return "Loss of Function"
+        if mt in GOF_TYPES:
+            return "Gain of Function"
+        return "Other"
+
+    patient_groups = {}
+    if not muts_df.empty and "sampleId" in muts_df.columns:
+        mut_col = "mutationType" if "mutationType" in muts_df.columns else "variantType"
+        type_col = mut_col if mut_col in muts_df.columns else None
+        for _, row in muts_df.iterrows():
+            pid = sample_to_patient.get(row["sampleId"], row["sampleId"])
+            grp = _classify(row.get(type_col, "")) if type_col else "Gain of Function"
+            if pid not in patient_groups or grp == "Loss of Function":
+                patient_groups[pid] = grp
+        for pid in patient_groups:
+            if patient_groups[pid] == "Other":
+                patient_groups[pid] = "Gain of Function"
+    for sid in sample_ids_to_use:
+        pid = sample_to_patient.get(sid, sid)
+        if pid not in patient_groups:
+            patient_groups[pid] = "Wild Type"
+
+    piv["group"] = piv[id_col].map(patient_groups).fillna("Wild Type")
+    piv = piv[piv["group"].isin(["Loss of Function", "Gain of Function", "Wild Type"])]
+    if piv.empty or piv["group"].nunique() < 2:
+        return pd.DataFrame(), pd.DataFrame(), "", "Need at least 2 groups for survival comparison"
+
+    piv[time_col] = pd.to_numeric(piv[time_col], errors="coerce")
+    piv = piv.dropna(subset=[time_col])
+    piv["event"] = piv[event_col].astype(str).str.upper().str.contains("DECEASED|RECURRED|PROGRESSED|1").astype(int)
+
+    surv_df = piv[[id_col, "group", time_col, "event"]].rename(columns={time_col: "time"})
+    if "DAYS" in time_col:
+        surv_df["time"] = surv_df["time"] / 30.44
+    counts = surv_df["group"].value_counts().reset_index()
+    counts.columns = ["Group", "N"]
+    return surv_df, counts, time_col, ""
+
 def get_cancer_types() -> pd.DataFrame:
     """Fetch cancer types for filtering."""
     data = _get("/cancer-types")

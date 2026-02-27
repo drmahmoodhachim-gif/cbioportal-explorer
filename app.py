@@ -19,6 +19,7 @@ from cbioportal_client import (
     get_mutations,
     fetch_mutations_by_study,
     fetch_gene_across_studies,
+    fetch_survival_data_for_gene,
 )
 from visualizations import (
     ANALYSIS_TYPES,
@@ -30,6 +31,7 @@ from visualizations import (
     summary_statistics,
     gene_across_studies_bar,
     lollipop_mutations,
+    survival_plot_gof_lof,
 )
 
 # Owner info
@@ -88,7 +90,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.sidebar.header("📋 Mode")
-mode = st.sidebar.radio("Choose analysis mode", ["Study Analysis", "Gene Search Across Studies"], key="mode")
+mode = st.sidebar.radio("Choose analysis mode", ["Study Analysis", "Gene Search Across Studies", "Survival Plotter (GoF vs LoF vs Wild)"], key="mode")
 st.sidebar.caption("Data from [cBioPortal](https://www.cbioportal.org)")
 
 @st.cache_data(ttl=3600)
@@ -144,6 +146,44 @@ if mode == "Gene Search Across Studies":
             if disp_cols:
                 st.dataframe(muts_df[disp_cols].drop_duplicates(), use_container_width=True, hide_index=True)
             st.download_button("Download all mutations (CSV)", muts_df.to_csv(index=False), file_name=f"{gene_input}_across_studies.csv", mime="text/csv", key="dl_gene_muts")
+elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
+    st.subheader("📈 Survival by Mutation Type (GoF vs LoF vs Wild Type)")
+    st.markdown("Compare **Gain of Function** (missense, in-frame), **Loss of Function** (nonsense, frameshift, splice), and **Wild Type** (no mutation) for a gene. Requires study with survival data (OS_MONTHS/OS_STATUS, etc.).")
+    surv_study_options = {f"{r.get('name','')} ({r.get('studyId','')})": r.get("studyId") for _, r in studies_df.iterrows()}
+    surv_study_label = st.selectbox("Select study (with survival data)", options=list(surv_study_options.keys()), key="surv_study")
+    surv_study_id = surv_study_options[surv_study_label]
+    surv_profiles_df = get_molecular_profiles(surv_study_id)
+    if not surv_profiles_df.empty and "molecularAlterationType" in surv_profiles_df.columns:
+        surv_mut_profiles = surv_profiles_df[surv_profiles_df["molecularAlterationType"].str.upper().str.contains("MUTATION", na=False)]
+        surv_mut_profiles = surv_mut_profiles if not surv_mut_profiles.empty else surv_profiles_df
+    else:
+        surv_mut_profiles = surv_profiles_df
+    surv_profile_options = {r.get("name", r.get("molecularProfileId","")): r.get("molecularProfileId") for _, r in surv_mut_profiles.iterrows()} if not surv_mut_profiles.empty else {}
+    surv_profile_label = st.selectbox("Select mutation profile", options=list(surv_profile_options.keys()) or [""], key="surv_profile")
+    surv_profile_id = surv_profile_options.get(surv_profile_label) if surv_profile_options else None
+    surv_gene_input = st.text_input("Enter gene symbol", value="BRCA1", key="surv_gene")
+    if st.button("📈 Plot Survival", type="primary", key="btn_surv"):
+        if not surv_profile_id:
+            st.error("No mutation profile selected.")
+        else:
+            with st.spinner("Fetching survival data..."):
+                surv_df, surv_counts, time_col, err = fetch_survival_data_for_gene(surv_study_id, surv_profile_id, surv_gene_input)
+            if err:
+                st.warning(err)
+            else:
+                st.success(f"Loaded survival data for **{surv_gene_input}** ({time_col})")
+                st.dataframe(surv_counts, use_container_width=True, hide_index=True)
+                fig_surv, stats_surv = survival_plot_gof_lof(surv_df, surv_gene_input, time_col)
+                st.pyplot(fig_surv)
+                plt.close(fig_surv)
+                if not stats_surv.empty:
+                    st.dataframe(stats_surv, use_container_width=True, hide_index=True)
+                buf = io.BytesIO()
+                fig_surv2, _ = survival_plot_gof_lof(surv_df, surv_gene_input, time_col)
+                fig_surv2.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+                plt.close(fig_surv2)
+                buf.seek(0)
+                st.download_button("Download survival plot (PNG)", buf, file_name=f"{surv_study_id}_{surv_gene_input}_survival.png", mime="image/png", key="dl_surv")
 else:
     study_options = {
         f"{row.get('name', row.get('studyId', ''))} ({row.get('studyId', '')})": row.get("studyId")
