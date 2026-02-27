@@ -55,7 +55,7 @@ def mutation_type_distribution(df: pd.DataFrame, top_n: int = 15) -> Tuple[plt.F
     return fig, stats_df
 
 
-def gene_mutation_frequency(df: pd.DataFrame, top_n: int = 20) -> Tuple[plt.Figure, pd.DataFrame]:
+def gene_mutation_frequency(df: pd.DataFrame, top_n: int = 20, title: Optional[str] = None) -> Tuple[plt.Figure, pd.DataFrame]:
     """Bar chart of most frequently mutated genes with statistics."""
     _setup_style()
     gene_col = "geneSymbol" if "geneSymbol" in df.columns else "hugoGeneSymbol"
@@ -77,10 +77,41 @@ def gene_mutation_frequency(df: pd.DataFrame, top_n: int = 20) -> Tuple[plt.Figu
     ax.set_yticks(range(len(gene_counts)))
     ax.set_yticklabels(gene_counts.index)
     ax.set_xlabel("Number of Mutations")
-    ax.set_title("Top Mutated Genes", fontweight="bold")
+    ax.set_title(title or "Top Mutated Genes", fontweight="bold")
     ax.invert_yaxis()
     plt.tight_layout()
     return fig, stats_df
+
+
+def hereditary_genes_analysis(df: pd.DataFrame, top_n: int = 20, **kwargs) -> Tuple[plt.Figure, pd.DataFrame]:
+    """Mutation frequency for hereditary breast cancer genes (BRCA1, BRCA2, PALB2, etc.)."""
+    from cbioportal_client import HEREDITARY_BREAST_CANCER_GENES
+    id_to_symbol = {v: k for k, v in HEREDITARY_BREAST_CANCER_GENES.items()}
+    hbc_ids = set(HEREDITARY_BREAST_CANCER_GENES.values())
+    hbc_symbols = set(HEREDITARY_BREAST_CANCER_GENES.keys())
+    if df.empty:
+        _setup_style()
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "No mutation data", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+    if "entrezGeneId" in df.columns:
+        sub = df[df["entrezGeneId"].astype(float).fillna(-1).astype(int).isin(hbc_ids)].copy()
+        if not sub.empty:
+            sub["hugoGeneSymbol"] = sub["entrezGeneId"].apply(
+                lambda x: id_to_symbol.get(int(float(x)) if pd.notna(x) else -1, str(int(x)) if pd.notna(x) else "")
+            )
+    elif "geneSymbol" in df.columns:
+        sub = df[df["geneSymbol"].astype(str).str.upper().isin(hbc_symbols)]
+    elif "hugoGeneSymbol" in df.columns:
+        sub = df[df["hugoGeneSymbol"].astype(str).str.upper().isin(hbc_symbols)]
+    else:
+        sub = pd.DataFrame()
+    if sub.empty:
+        _setup_style()
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "No hereditary breast cancer gene mutations found", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+    return gene_mutation_frequency(sub, top_n=top_n, title="Hereditary Breast Cancer Genes")
 
 
 def variant_classification_distribution(df: pd.DataFrame, top_n: int = 12) -> Tuple[plt.Figure, pd.DataFrame]:
@@ -195,6 +226,7 @@ def summary_statistics(df: pd.DataFrame) -> pd.DataFrame:
 ANALYSIS_TYPES = {
     "Mutation Type Distribution": mutation_type_distribution,
     "Top Mutated Genes": gene_mutation_frequency,
+    "Hereditary Breast Cancer Genes": hereditary_genes_analysis,
     "Variant Classification": variant_classification_distribution,
     "Sample Mutation Burden": sample_mutation_burden,
     "Mutation Matrix (Gene × Sample)": oncoprint_style_matrix,
