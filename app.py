@@ -17,6 +17,7 @@ from cbioportal_client import (
     get_molecular_profiles,
     get_samples,
     get_mutations,
+    get_entrez_id,
     fetch_mutations_by_study,
     fetch_gene_across_studies,
     fetch_survival_data_for_gene,
@@ -26,6 +27,7 @@ from cbioportal_client import (
     filter_studies_with_survival,
     filter_studies_with_expression,
 )
+from kegg_enrichment import fetch_kegg_enrichment
 from visualizations import (
     ANALYSIS_TYPES,
     mutation_type_distribution,
@@ -39,6 +41,7 @@ from visualizations import (
     subtype_enrichment_chart,
     survival_plot_gof_lof,
     deg_downstream_chart,
+    kegg_enrichment_chart,
 )
 
 # Owner info
@@ -129,6 +132,12 @@ def load_breast_cancer_studies_with_survival():
     if df.empty:
         return df
     return filter_studies_with_survival(df)
+
+
+@st.cache_data(ttl=86400)
+def _run_kegg_enrichment(deg_genes_tuple: tuple) -> tuple:
+    """Cached KEGG enrichment (cache 24h to respect KEGG API rate limits)."""
+    return fetch_kegg_enrichment(list(deg_genes_tuple), get_entrez_id)
 
 
 @st.cache_data(ttl=3600)
@@ -324,6 +333,25 @@ elif mode == "DEG Analysis (Wild vs LoF vs GoF)":
                 plt.close(fig_deg)
                 st.dataframe(deg_df, use_container_width=True, hide_index=True)
                 st.download_button("Download DEG results (CSV)", deg_df.to_csv(index=False), file_name=f"{deg_study_id}_{deg_gene_input}_DEG.csv", mime="text/csv", key="dl_deg")
+
+                # KEGG pathway enrichment
+                st.subheader("KEGG Pathway Enrichment (DEG dynamics)")
+                deg_genes_unique = tuple(sorted(deg_df["Gene"].dropna().unique().tolist()))
+                with st.spinner("Fetching KEGG pathway enrichment (first run may take 30–60 sec)..."):
+                    kegg_df, kegg_err = _run_kegg_enrichment(deg_genes_unique)
+                if kegg_err:
+                    st.info(kegg_err)
+                elif not kegg_df.empty:
+                    fig_kegg, _ = kegg_enrichment_chart(kegg_df)
+                    st.pyplot(fig_kegg)
+                    plt.close(fig_kegg)
+                    # Add KEGG link column (Streamlit renders URLs as clickable)
+                    kegg_display = kegg_df.copy()
+                    kegg_display["KEGG pathway"] = kegg_display["Pathway_ID"].apply(
+                        lambda x: f"https://www.kegg.jp/pathway/{x}"
+                    )
+                    st.dataframe(kegg_display, use_container_width=True, hide_index=True)
+                    st.download_button("Download KEGG enrichment (CSV)", kegg_df.to_csv(index=False), file_name=f"{deg_study_id}_{deg_gene_input}_KEGG.csv", mime="text/csv", key="dl_kegg")
             elif not deg_err:
                 st.info("No significant DEG at the selected p-value threshold.")
 else:

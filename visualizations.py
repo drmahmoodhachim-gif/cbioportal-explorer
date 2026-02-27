@@ -307,6 +307,32 @@ def lollipop_mutations(df: pd.DataFrame, gene_symbol: str) -> Tuple[plt.Figure, 
     return fig, stats_df
 
 
+def kegg_enrichment_chart(kegg_df: pd.DataFrame, top_n: int = 15) -> Tuple[plt.Figure, pd.DataFrame]:
+    """Bar chart of KEGG pathway enrichment (-log10 p-value)."""
+    _setup_style()
+    if kegg_df.empty or "Pathway_Name" not in kegg_df.columns or "p_value" not in kegg_df.columns:
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "No KEGG enrichment data", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+
+    df = kegg_df.head(top_n).copy()
+    df["neglog10p"] = -np.log10(df["p_value"].replace(0, 1e-20))
+    # Shorten pathway names for y-axis
+    df["label"] = df["Pathway_Name"].str[:55] + ("..." if df["Pathway_Name"].str.len().gt(55).any() else "")
+
+    fig, ax = plt.subplots(figsize=(10, max(6, len(df) * 0.35)))
+    ax.barh(range(len(df)), df["neglog10p"], color=sns.color_palette("viridis", len(df))[::-1])
+    ax.set_yticks(range(len(df)))
+    ax.set_yticklabels(df["label"], fontsize=9)
+    ax.set_xlabel("-log10(p-value)")
+    ax.axvline(-np.log10(0.05), color="gray", linestyle="--", alpha=0.7, label="p=0.05")
+    ax.set_title("KEGG Pathway Enrichment (DEG dynamics)", fontweight="bold")
+    ax.legend(loc="lower right")
+    ax.invert_yaxis()
+    plt.tight_layout()
+    return fig, kegg_df
+
+
 def deg_downstream_chart(deg_df: pd.DataFrame, gene_symbol: str) -> Tuple[plt.Figure, pd.DataFrame]:
     """Bar chart of differential expression (median diff, -log10 p) for downstream genes."""
     _setup_style()
