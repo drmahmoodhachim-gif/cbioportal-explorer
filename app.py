@@ -160,7 +160,8 @@ if mode == "Gene Search Across Studies":
 elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
     st.subheader("📈 Survival by Mutation Type (GoF vs LoF vs Wild Type)")
     st.markdown("Compare **Gain of Function** (missense, in-frame), **Loss of Function** (nonsense, frameshift, splice), and **Wild Type** (no mutation) for a gene. Only studies with survival data (OS/DFS/PFS/RFS) are shown.")
-    surv_studies_df = load_breast_cancer_studies_with_survival()
+    with st.spinner("Loading studies with survival data (may take 30-60 sec on first load)..."):
+        surv_studies_df = load_breast_cancer_studies_with_survival()
     if surv_studies_df.empty:
         st.warning("No breast cancer studies with survival data found in cBioPortal.")
         st.stop()
@@ -191,6 +192,9 @@ elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
                 surv_type_display = {"OS_MONTHS": "Overall Survival", "DFS_MONTHS": "Disease-Free Survival",
                     "PFS_MONTHS": "Progression-Free Survival", "RFS_MONTHS": "Recurrence-Free Survival",
                     "DSS_MONTHS": "Disease-Specific Survival"}.get(time_col, time_col)
+
+                # Overall survival (all patients)
+                st.subheader("Overall (all patients)")
                 fig_surv, stats_surv, interp = survival_plot_gof_lof(surv_df, surv_gene_input, surv_type_display)
                 st.pyplot(fig_surv)
                 plt.close(fig_surv)
@@ -199,6 +203,42 @@ elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
                 if interp:
                     st.markdown("---")
                     st.markdown(interp)
+
+                # Per-subtype survival (if subtype data exists)
+                st.subheader("Per molecular subtype")
+                has_subtypes = (
+                    "subtype" in surv_df.columns
+                    and surv_df["subtype"].nunique() > 1
+                    and (surv_df["subtype"].astype(str) != "All").any()
+                )
+                if has_subtypes:
+                    subtypes = [
+                        s for s in surv_df["subtype"].dropna().unique()
+                        if str(s) not in ("All", "Unknown", "nan")
+                    ]
+                    min_per_subtype = 15
+                    shown = 0
+                    for sub in sorted(subtypes):
+                        sub_df = surv_df[surv_df["subtype"] == sub]
+                        if len(sub_df) < min_per_subtype or sub_df["group"].nunique() < 2:
+                            continue
+                        with st.expander(f"**{sub}** (n={len(sub_df)})", expanded=True):
+                            fig_sub, stats_sub, interp_sub = survival_plot_gof_lof(
+                                sub_df, surv_gene_input, f"{surv_type_display} - {sub}"
+                            )
+                            st.pyplot(fig_sub)
+                            plt.close(fig_sub)
+                            if not stats_sub.empty:
+                                st.dataframe(stats_sub, use_container_width=True, hide_index=True)
+                            if interp_sub:
+                                st.markdown(interp_sub)
+                        shown += 1
+                    if shown == 0:
+                        st.info("No subtypes with enough patients and mutation groups for separate analysis.")
+                else:
+                    st.info("Molecular subtype data not available for this study. Only overall survival is shown.")
+
+                st.markdown("---")
                 buf = io.BytesIO()
                 fig_surv2, _, _ = survival_plot_gof_lof(surv_df, surv_gene_input, surv_type_display)
                 fig_surv2.savefig(buf, format="png", dpi=300, bbox_inches="tight")

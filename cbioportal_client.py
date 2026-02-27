@@ -382,7 +382,22 @@ def fetch_survival_data_for_gene(
     piv = piv.dropna(subset=[time_col])
     piv["event"] = piv[event_col].astype(str).str.upper().str.contains("DECEASED|RECURRED|PROGRESSED|1").astype(int)
 
-    surv_df = piv[[id_col, "group", time_col, "event"]].rename(columns={time_col: "time"})
+    surv_df = piv[[id_col, "group", time_col, "event"]].copy()
+    surv_df = surv_df.rename(columns={time_col: "time"})
+    # Add molecular subtype if available - try common breast cancer subtype attributes
+    subtype_cols = [
+        "SUBTYPE",           # TCGA PanCan (BRCA_LumA, BRCA_Basal, etc.)
+        "CLAUDIN_SUBTYPE",   # METABRIC (LumA, LumB, Her2, Basal, Claudin-low)
+        "PAM50_MRNA", "BREAST_SUBTYPE", "IHC_SUBTYPE",
+        "INTCLUST",          # METABRIC integrative clusters
+        "THREEGENE",         # 3-gene classifier
+    ]
+    for col in subtype_cols:
+        if col in piv.columns:
+            surv_df["subtype"] = piv[col].fillna("Unknown").astype(str).str.strip()
+            break
+    else:
+        surv_df["subtype"] = "All"
     if "DAYS" in time_col:
         surv_df["time"] = surv_df["time"] / 30.44
     counts = surv_df["group"].value_counts().reset_index()
