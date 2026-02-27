@@ -15,50 +15,20 @@ HEREDITARY_BREAST_CANCER_GENES = {
     "CDH1": 999, "STK11": 6794, "ATM": 472, "CHEK2": 11200, "BARD1": 580,
     "RAD51C": 5889, "RAD51D": 5892, "NF1": 4763,
 }
-# Cache for API-resolved Entrez ID -> symbol (so all genes appear as symbols, not numbers)
-_ENTREZ_TO_SYMBOL_CACHE: dict = {v: k for k, v in HEREDITARY_BREAST_CANCER_GENES.items()}
+# Static map only (no API calls) for speed
+_ENTREZ_TO_SYMBOL: dict = {v: k for k, v in HEREDITARY_BREAST_CANCER_GENES.items()}
 
 
-def _fetch_one_gene(entrez_id: int) -> None:
-    """Fetch one gene symbol via API; update cache. Used for parallel batch."""
-    if entrez_id in _ENTREZ_TO_SYMBOL_CACHE:
-        return
-    try:
-        r = requests.get(f"{API_BASE}/genes/{entrez_id}", timeout=5)
-        if r.ok and r.text:
-            data = r.json()
-            sym = data.get("hugoGeneSymbol") or data.get("geneSymbol")
-            if sym:
-                _ENTREZ_TO_SYMBOL_CACHE[entrez_id] = str(sym)
-                return
-    except Exception:
-        pass
-    _ENTREZ_TO_SYMBOL_CACHE[entrez_id] = str(entrez_id)
-
-
-def _add_gene_symbols(df: pd.DataFrame, max_api_lookups: int = 75) -> pd.DataFrame:
-    """Add hugoGeneSymbol. Resolve unknown IDs via API in parallel; cap lookups to avoid slowness."""
+def _add_gene_symbols(df: pd.DataFrame) -> pd.DataFrame:
+    """Add hugoGeneSymbol using static map. Unknown genes show Entrez ID (no API = fast)."""
     if df.empty or "hugoGeneSymbol" in df.columns or "geneSymbol" in df.columns:
         return df
     if "entrezGeneId" not in df.columns:
         return df
-    # Prioritize most frequent genes (top mutated) for API resolution
-    id_counts = df["entrezGeneId"].dropna().astype(str).value_counts()
-    ids_to_fetch = []
-    for uid in id_counts.index:
-        try:
-            eid = int(float(uid))
-            if eid not in _ENTREZ_TO_SYMBOL_CACHE and len(ids_to_fetch) < max_api_lookups:
-                ids_to_fetch.append(eid)
-        except (ValueError, TypeError):
-            pass
-    if ids_to_fetch:
-        with ThreadPoolExecutor(max_workers=10) as ex:
-            list(ex.map(_fetch_one_gene, ids_to_fetch))
-    # Use cache (IDs not resolved stay as numbers)
+
     def _to_symbol(x):
         try:
-            return _ENTREZ_TO_SYMBOL_CACHE.get(int(float(x)), str(int(float(x))))
+            return _ENTREZ_TO_SYMBOL.get(int(float(x)), str(int(float(x))))
         except (ValueError, TypeError):
             return str(x) if pd.notna(x) else ""
 
