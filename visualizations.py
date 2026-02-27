@@ -9,6 +9,8 @@ import seaborn as sns
 import numpy as np
 from typing import Tuple, Optional
 
+from cbioportal_client import HEREDITARY_BREAST_CANCER_GENES, _add_gene_symbols
+
 # High-resolution settings for publication-ready figures
 DPI = 300
 FIG_SIZE = (12, 8)
@@ -17,7 +19,12 @@ PALETTE = "muted"
 
 def _setup_style():
     """Apply publication-quality style."""
-    plt.style.use("seaborn-v0_8-whitegrid")
+    try:
+        plt.style.use("seaborn-v0_8-whitegrid")
+    except OSError:
+        plt.style.use("seaborn-whitegrid")
+    except OSError:
+        plt.style.use("ggplot")
     plt.rcParams.update({
         "font.size": 11,
         "axes.titlesize": 14,
@@ -180,7 +187,6 @@ def oncoprint_style_matrix(df: pd.DataFrame, top_genes: int = 20, top_samples: i
 
 def hereditary_genes_analysis(df: pd.DataFrame, top_n: int = 20) -> Tuple[plt.Figure, pd.DataFrame]:
     """Focus on hereditary breast cancer genes (BRCA1, BRCA2, PALB2, etc.)."""
-    from cbioportal_client import HEREDITARY_BREAST_CANCER_GENES, _add_gene_symbols
     df = _add_gene_symbols(df.copy())
     gene_col = "geneSymbol" if "geneSymbol" in df.columns else "hugoGeneSymbol"
     if gene_col not in df.columns and "entrezGeneId" in df.columns:

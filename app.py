@@ -3,6 +3,10 @@ cBioPortal Explorer - Interactive Streamlit app for cancer genomics data.
 Explore studies, datasets, run mutations, and export figures + tables.
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import io
 import streamlit as st
 import pandas as pd
