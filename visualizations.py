@@ -3,6 +3,7 @@ Generate high-resolution mutation figures and statistics for cBioPortal data.
 """
 
 import io
+import re
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -233,6 +234,77 @@ def summary_statistics(df: pd.DataFrame) -> pd.DataFrame:
         stats.append(("Mutation Types", df["mutationType"].nunique()))
 
     return pd.DataFrame(stats, columns=["Metric", "Value"])
+
+
+def gene_across_studies_bar(counts_df: pd.DataFrame, gene_symbol: str, top_n: int = 30) -> Tuple[plt.Figure, pd.DataFrame]:
+    """Bar plot of gene mutation count across studies."""
+    _setup_style()
+    if counts_df.empty or "studyName" not in counts_df.columns or "count" not in counts_df.columns:
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "No data available", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+    df = counts_df.nlargest(top_n, "count").sort_values("count", ascending=True)
+    fig, ax = plt.subplots(figsize=(12, max(6, len(df) * 0.35)))
+    colors = sns.color_palette("viridis", len(df))[::-1]
+    ax.barh(range(len(df)), df["count"].values, color=colors)
+    ax.set_yticks(range(len(df)))
+    ax.set_yticklabels(df["studyName"].str[:50] + ("..." if df["studyName"].str.len().gt(50).any() else ""), fontsize=9)
+    ax.set_xlabel("Number of Mutations")
+    ax.set_title(f"{gene_symbol} Mutations Across Studies", fontweight="bold")
+    ax.invert_yaxis()
+    plt.tight_layout()
+    return fig, df[["studyName", "studyId", "count"]].rename(columns={"count": "Mutation Count"})
+
+
+def lollipop_mutations(df: pd.DataFrame, gene_symbol: str) -> Tuple[plt.Figure, pd.DataFrame]:
+    """Lollipop plot: protein position vs mutation count/frequency."""
+    _setup_style()
+    if df.empty:
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "No mutation data", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+
+    def _get_pos(row):
+        if "proteinPosStart" in row.index and pd.notna(row.get("proteinPosStart")):
+            try:
+                return int(float(row["proteinPosStart"]))
+            except (ValueError, TypeError):
+                pass
+        if "proteinPosition" in row.index and pd.notna(row.get("proteinPosition")):
+            try:
+                return int(float(row["proteinPosition"]))
+            except (ValueError, TypeError):
+                pass
+        pc = str(row.get("proteinChange", "") or row.get("aminoAcidChange", ""))
+        m = re.search(r"(\d+)", pc)
+        return int(m.group(1)) if m else None
+
+    df = df.copy()
+    df["_pos"] = df.apply(_get_pos, axis=1)
+    df = df.dropna(subset=["_pos"])
+    if df.empty:
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "No protein position data for lollipop", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+
+    pos_counts = df.groupby("_pos").size().reset_index(name="count")
+    pos_counts = pos_counts.sort_values("_pos")
+    x = pos_counts["_pos"].values
+    y = pos_counts["count"].values
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    for xi, yi in zip(x, y):
+        ax.plot([xi, xi], [0, yi], "C0-", linewidth=1.5)
+    ax.scatter(x, y, s=50, c="C0", zorder=5, edgecolors="white", linewidths=1)
+    ax.set_xlabel("Protein Position (amino acid)")
+    ax.set_ylabel("Mutation Count")
+    ax.set_title(f"{gene_symbol} Mutation Lollipop (all variations)", fontweight="bold")
+    ax.set_ylim(bottom=0)
+    plt.xticks(rotation=0)
+    plt.tight_layout()
+
+    stats_df = pos_counts.rename(columns={"_pos": "Protein Position", "count": "Mutation Count"})
+    return fig, stats_df
 
 
 ANALYSIS_TYPES = {

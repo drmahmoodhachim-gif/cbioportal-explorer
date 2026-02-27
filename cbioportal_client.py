@@ -4,7 +4,7 @@ API docs: https://www.cbioportal.org/api/swagger-ui/index.html
 """
 
 import requests
-from typing import Optional
+from typing import Optional, Tuple
 import pandas as pd
 
 API_BASE = "https://www.cbioportal.org/api"
@@ -144,6 +144,77 @@ def fetch_mutations_by_study(
     except Exception:
         pass
     return pd.DataFrame()
+
+
+def get_entrez_id(gene_symbol: str) -> Optional[int]:
+    """Resolve Hugo gene symbol to Entrez Gene ID via cBioPortal API."""
+    if not gene_symbol or not str(gene_symbol).strip():
+        return None
+    sym = str(gene_symbol).strip().upper()
+    try:
+        data = _get("/genes", params={"keyword": sym, "pageSize": 10})
+        for g in data or []:
+            if g.get("hugoGeneSymbol", "").upper() == sym:
+                return int(g.get("entrezGeneId", 0)) or None
+        if data and len(data) > 0:
+            return int(data[0].get("entrezGeneId", 0)) or None
+    except Exception:
+        pass
+    return None
+
+
+def fetch_gene_across_studies(
+    gene_symbol: str,
+    studies_df: pd.DataFrame,
+    max_studies: int = 50,
+    samples_per_study: int = 200,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Fetch mutations for a gene across breast cancer studies.
+    Returns (mutations_df with studyId, study_counts_df for bar plot).
+    """
+    entrez = get_entrez_id(gene_symbol)
+    if not entrez:
+        return pd.DataFrame(), pd.DataFrame()
+
+    all_muts = []
+    study_counts = []
+
+    for _, row in studies_df.head(max_studies).iterrows():
+        sid = row.get("studyId")
+        if not sid:
+            continue
+        profiles = get_molecular_profiles(sid)
+        if profiles.empty or "molecularAlterationType" not in profiles.columns:
+            continue
+        mut_profiles = profiles[
+            profiles["molecularAlterationType"].str.upper().str.contains("MUTATION", na=False)
+        ]
+        if mut_profiles.empty:
+            mut_profiles = profiles
+        profile_id = mut_profiles.iloc[0].get("molecularProfileId")
+        if not profile_id:
+            continue
+        samples = get_samples(sid)
+        if samples.empty:
+            continue
+        sample_ids = samples["sampleId"].head(samples_per_study).tolist()
+        try:
+            df = get_mutations(profile_id, sample_ids=sample_ids, entrez_gene_ids=[entrez])
+            if not df.empty:
+                df = _add_gene_symbols(df)
+                df["studyId"] = sid
+                df["studyName"] = row.get("name", sid)
+                all_muts.append(df)
+                study_counts.append({"studyId": sid, "studyName": row.get("name", sid), "count": len(df)})
+        except Exception:
+            continue
+
+    if not all_muts:
+        return pd.DataFrame(), pd.DataFrame()
+    muts_df = pd.concat(all_muts, ignore_index=True)
+    counts_df = pd.DataFrame(study_counts)
+    return muts_df, counts_df
 
 
 def get_cancer_types() -> pd.DataFrame:
