@@ -24,6 +24,7 @@ from cbioportal_client import (
     fetch_deg_downstream,
     fetch_deg_full,
     filter_studies_with_survival,
+    filter_studies_with_expression,
 )
 from visualizations import (
     ANALYSIS_TYPES,
@@ -128,6 +129,15 @@ def load_breast_cancer_studies_with_survival():
     if df.empty:
         return df
     return filter_studies_with_survival(df)
+
+
+@st.cache_data(ttl=3600)
+def load_breast_cancer_studies_with_expression():
+    """Breast cancer studies that have mRNA/expression data."""
+    df = load_breast_cancer_studies()
+    if df.empty:
+        return df
+    return filter_studies_with_expression(df)
 
 
 studies_df = load_breast_cancer_studies()
@@ -274,10 +284,11 @@ elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
                 st.download_button("Download survival plot (PNG)", buf, file_name=f"{surv_study_id}_{surv_gene_input}_survival.png", mime="image/png", key="dl_surv")
 elif mode == "DEG Analysis (Wild vs LoF vs GoF)":
     st.subheader("📊 DEG Analysis: Wild vs Loss of Function vs Gain of Function")
-    st.markdown("Select a study and gene. Samples are classified into **Wild Type**, **Loss of Function** (nonsense, frameshift, splice), and **Gain of Function** (missense, in-frame). Differential expression (Mann–Whitney U) is computed for all genes between each group: **LoF vs Wild**, **GoF vs Wild**, **LoF vs GoF**. Studies must have expression data.")
-    deg_studies_df = load_breast_cancer_studies()
+    st.markdown("Select a study and gene. Samples are classified into **Wild Type**, **Loss of Function** (nonsense, frameshift, splice), and **Gain of Function** (missense, in-frame). Differential expression (Mann–Whitney U) is computed for all genes between each group: **LoF vs Wild**, **GoF vs Wild**, **LoF vs GoF**. Only studies with mRNA/expression data are shown.")
+    with st.spinner("Loading studies with RNA/expression data (may take 30–60 sec on first load)..."):
+        deg_studies_df = load_breast_cancer_studies_with_expression()
     if deg_studies_df.empty:
-        st.warning("No breast cancer studies found.")
+        st.warning("No breast cancer studies with mRNA/expression data found in cBioPortal.")
         st.stop()
     deg_study_options = {f"{r.get('name','')} ({r.get('studyId','')})": r.get("studyId") for _, r in deg_studies_df.iterrows()}
     deg_study_label = st.selectbox("Select study", options=list(deg_study_options.keys()), key="deg_study")

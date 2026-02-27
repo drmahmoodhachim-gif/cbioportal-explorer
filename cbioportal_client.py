@@ -398,6 +398,42 @@ def filter_studies_with_survival(studies_df: pd.DataFrame) -> pd.DataFrame:
     return studies_df[mask].reset_index(drop=True)
 
 
+def study_has_expression_data(study_id: str) -> bool:
+    """Check if a study has mRNA/expression molecular profile."""
+    try:
+        profiles = get_molecular_profiles(study_id)
+        if profiles.empty or "molecularAlterationType" not in profiles.columns:
+            return False
+        expr = profiles["molecularAlterationType"].astype(str).str.upper().str.contains("MRNA|EXPRESSION", na=False)
+        if expr.any():
+            return True
+        if "datatype" in profiles.columns:
+            dt = profiles["datatype"].astype(str).str.upper().str.contains("Z-SCORE|CONTINUOUS", na=False)
+            if dt.any():
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def filter_studies_with_expression(studies_df: pd.DataFrame) -> pd.DataFrame:
+    """Return only studies that have mRNA/expression data."""
+    if studies_df.empty:
+        return studies_df
+    study_ids = studies_df["studyId"].tolist()
+    has_expr = {}
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futures = {ex.submit(study_has_expression_data, sid): sid for sid in study_ids}
+        for f in as_completed(futures):
+            sid = futures[f]
+            try:
+                has_expr[sid] = f.result()
+            except Exception:
+                has_expr[sid] = False
+    mask = studies_df["studyId"].map(lambda x: has_expr.get(x, False))
+    return studies_df[mask].reset_index(drop=True)
+
+
 def get_clinical_data(study_id: str, clinical_data_type: str = "SAMPLE") -> pd.DataFrame:
     """Fetch clinical data for a study.
     clinical_data_type: 'PATIENT' for survival (OS_MONTHS, OS_STATUS, etc.), 'SAMPLE' for sample-level.
