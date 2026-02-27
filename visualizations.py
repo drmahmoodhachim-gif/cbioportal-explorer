@@ -307,6 +307,34 @@ def lollipop_mutations(df: pd.DataFrame, gene_symbol: str) -> Tuple[plt.Figure, 
     return fig, stats_df
 
 
+def deg_downstream_chart(deg_df: pd.DataFrame, gene_symbol: str) -> Tuple[plt.Figure, pd.DataFrame]:
+    """Bar chart of differential expression (median diff, -log10 p) for downstream genes."""
+    _setup_style()
+    if deg_df.empty or "Gene" not in deg_df.columns or "p_value" not in deg_df.columns:
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "No DEG data available", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+
+    df = deg_df.copy()
+    df["neglog10p"] = -np.log10(df["p_value"].replace(0, 1e-20))
+    df["label"] = df["Gene"] + " (" + df["Comparison"] + ")"
+    df = df.sort_values("neglog10p", ascending=True).tail(25)
+
+    fig, ax = plt.subplots(figsize=(10, max(6, len(df) * 0.3)))
+    dir_col = df["Direction"] if "Direction" in df.columns else pd.Series(["up"] * len(df))
+    colors = ["#2ecc71" if str(d).lower() == "up" else "#e74c3c" for d in dir_col]
+    ax.barh(range(len(df)), df["neglog10p"], color=colors)
+    ax.set_yticks(range(len(df)))
+    ax.set_yticklabels(df["label"], fontsize=9)
+    ax.set_xlabel("-log10(p-value)")
+    ax.axvline(-np.log10(0.05), color="gray", linestyle="--", alpha=0.7, label="p=0.05")
+    ax.set_title(f"DEG downstream of {gene_symbol}: Wild vs LoF/GoF", fontweight="bold")
+    ax.legend(loc="lower right")
+    ax.invert_yaxis()
+    plt.tight_layout()
+    return fig, deg_df
+
+
 def subtype_enrichment_chart(
     enrichment_results: list,
     gene_symbol: str,

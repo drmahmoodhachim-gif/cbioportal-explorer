@@ -21,6 +21,7 @@ from cbioportal_client import (
     fetch_gene_across_studies,
     fetch_survival_data_for_gene,
     fetch_subtype_enrichment,
+    fetch_deg_downstream,
     filter_studies_with_survival,
 )
 from visualizations import (
@@ -35,6 +36,7 @@ from visualizations import (
     lollipop_mutations,
     subtype_enrichment_chart,
     survival_plot_gof_lof,
+    deg_downstream_chart,
 )
 
 # Owner info
@@ -256,6 +258,18 @@ elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
                         st.info("No subtypes with enough patients and mutation groups for separate analysis.")
                 else:
                     st.info("Molecular subtype data not available for this study. Only overall survival is shown.")
+
+                # DEG downstream of gene (Wild vs LoF vs GoF)
+                st.subheader(f"DEG downstream of {surv_gene_input}")
+                with st.spinner("Fetching expression data for downstream genes..."):
+                    deg_df, deg_err = fetch_deg_downstream(surv_study_id, surv_profile_id, surv_gene_input)
+                if deg_err:
+                    st.info(deg_err)
+                elif not deg_df.empty:
+                    fig_deg, _ = deg_downstream_chart(deg_df, surv_gene_input)
+                    st.pyplot(fig_deg)
+                    plt.close(fig_deg)
+                    st.dataframe(deg_df, use_container_width=True, hide_index=True)
 
                 st.markdown("---")
                 buf = io.BytesIO()
