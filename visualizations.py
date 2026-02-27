@@ -307,6 +307,40 @@ def lollipop_mutations(df: pd.DataFrame, gene_symbol: str) -> Tuple[plt.Figure, 
     return fig, stats_df
 
 
+def subtype_enrichment_chart(
+    enrichment_results: list,
+    gene_symbol: str,
+) -> Tuple[plt.Figure, pd.DataFrame]:
+    """Bar chart of mutation rate by molecular subtype, with chi-squared p-values."""
+    _setup_style()
+    if not enrichment_results:
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
+        ax.text(0.5, 0.5, "No subtype data available", ha="center", va="center", fontsize=14)
+        return fig, pd.DataFrame()
+
+    all_stats = []
+    n_studies = len(enrichment_results)
+    fig, axes = plt.subplots(n_studies, 1, figsize=(10, 4 * n_studies), sharex=False)
+    if n_studies == 1:
+        axes = [axes]
+    for ax, res in zip(axes, enrichment_results):
+        tbl = res["subtype_df"].copy()
+        tbl["studyId"] = res["studyId"]
+        tbl["studyName"] = res["studyName"]
+        tbl["p_value"] = res["p_value"]
+        all_stats.append(tbl)
+        p_str = f"p = {res['p_value']:.4f}" if not pd.isna(res["p_value"]) else "p = N/A"
+        sig = " **" if res["p_value"] < 0.05 else ""
+        ax.barh(tbl["Subtype"], tbl["Mutation rate (%)"], color=sns.color_palette(PALETTE, len(tbl)))
+        ax.set_xlabel("Mutation rate (%)")
+        ax.set_title(f"{res['studyName'][:55]} - {p_str}{sig}", fontsize=11)
+        ax.invert_yaxis()
+        ax.set_xlim(0, 100)
+    plt.tight_layout()
+    combined = pd.concat(all_stats, ignore_index=True)
+    return fig, combined
+
+
 def _format_survival_type(col_name: str) -> str:
     """Map OS_MONTHS, DFS_MONTHS etc. to display name."""
     m = {"OS_MONTHS": "Overall Survival", "DFS_MONTHS": "Disease-Free Survival",

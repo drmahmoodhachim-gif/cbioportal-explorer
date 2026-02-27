@@ -218,6 +218,80 @@ def fetch_gene_across_studies(
     return muts_df, counts_df
 
 
+_SUBTYPE_ATTRS = [
+    "SUBTYPE", "CLAUDIN_SUBTYPE", "PAM50_MRNA", "BREAST_SUBTYPE",
+    "IHC_SUBTYPE", "INTCLUST", "THREEGENE",
+]
+
+
+def fetch_subtype_enrichment(
+    muts_df: pd.DataFrame,
+    studies_df: pd.DataFrame,
+    top_n_studies: int = 5,
+) -> list:
+    """
+    For studies with mutations, fetch subtype data and compute chi-squared enrichment.
+    Returns list of {studyId, studyName, subtype_stats_df, p_value, has_subtype}.
+    """
+    if muts_df.empty or "studyId" not in muts_df.columns or "sampleId" not in muts_df.columns:
+        return []
+    mutated = muts_df.groupby("studyId")["sampleId"].apply(set).to_dict()
+    top_studies = muts_df["studyId"].value_counts().head(top_n_studies)
+    results = []
+    for sid in top_studies.index:
+        study_row = studies_df[studies_df["studyId"] == sid].iloc[0] if sid in studies_df["studyId"].values else None
+        study_name = study_row["name"] if study_row is not None else sid
+        try:
+            samples = get_samples(sid)
+            if samples.empty or "patientId" not in samples.columns:
+                continue
+            clinical = get_clinical_data(sid, clinical_data_type="PATIENT")
+            if clinical.empty:
+                continue
+            piv = clinical.pivot_table(index="patientId", columns="clinicalAttributeId", values="value", aggfunc="first")
+            subtype_col = None
+            for col in _SUBTYPE_ATTRS:
+                if col in piv.columns:
+                    subtype_col = col
+                    break
+            if subtype_col is None:
+                continue
+            sub_df = piv[[subtype_col]].reset_index()
+            sub_df = sub_df.rename(columns={subtype_col: "subtype"})
+            samples = samples.merge(sub_df, on="patientId", how="left")
+            samples["subtype"] = samples["subtype"].fillna("Unknown").astype(str).str.strip()
+            samples = samples[samples["subtype"] != "Unknown"]
+            if samples.empty or samples["subtype"].nunique() < 2:
+                continue
+            mutated_sids = mutated.get(sid, set())
+            samples["mutated"] = samples["sampleId"].isin(mutated_sids).astype(int)
+            tbl = samples.groupby("subtype").agg({"mutated": ["sum", "count"]})
+            tbl.columns = ["mutated", "total"]
+            tbl["not_mutated"] = tbl["total"] - tbl["mutated"]
+            tbl = tbl[tbl["total"] >= 5]
+            if tbl.shape[0] < 2 or tbl["mutated"].sum() < 2:
+                continue
+            try:
+                from scipy.stats import chi2_contingency
+                cont = tbl[["mutated", "not_mutated"]].values
+                chi2, p_val, _, _ = chi2_contingency(cont)
+            except Exception:
+                p_val = float("nan")
+            tbl["rate_pct"] = (tbl["mutated"] / tbl["total"] * 100).round(1)
+            tbl = tbl.reset_index()
+            tbl.columns = ["Subtype", "N mutated", "N total", "N not mutated", "Mutation rate (%)"]
+            results.append({
+                "studyId": sid,
+                "studyName": study_name,
+                "subtype_df": tbl,
+                "p_value": p_val,
+                "has_subtype": True,
+            })
+        except Exception:
+            continue
+    return results
+
+
 # Survival attribute pairs: (time_col, event_col) - both must be patient-level
 _SURVIVAL_ATTR_PAIRS = [
     ("OS_MONTHS", "OS_STATUS"),

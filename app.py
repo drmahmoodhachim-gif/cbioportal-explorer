@@ -20,6 +20,7 @@ from cbioportal_client import (
     fetch_mutations_by_study,
     fetch_gene_across_studies,
     fetch_survival_data_for_gene,
+    fetch_subtype_enrichment,
     filter_studies_with_survival,
 )
 from visualizations import (
@@ -32,6 +33,7 @@ from visualizations import (
     summary_statistics,
     gene_across_studies_bar,
     lollipop_mutations,
+    subtype_enrichment_chart,
     survival_plot_gof_lof,
 )
 
@@ -152,6 +154,22 @@ if mode == "Gene Search Across Studies":
                 plt.close(fig_lolli)
                 if not stats_lolli.empty:
                     st.dataframe(stats_lolli, use_container_width=True, hide_index=True)
+            st.subheader("Molecular subtype association")
+            with st.spinner("Fetching subtype data for top studies..."):
+                subtype_results = fetch_subtype_enrichment(muts_df, studies_df, top_n_studies=5)
+            if subtype_results:
+                fig_sub, stats_sub = subtype_enrichment_chart(subtype_results, gene_input)
+                st.pyplot(fig_sub)
+                plt.close(fig_sub)
+                st.markdown("**Chi-squared test:** Mutation rate (%) by subtype. p < 0.05 = significant association.")
+                for res in subtype_results:
+                    pv = res["p_value"]
+                p_str = f"{pv:.4f}" if not pd.isna(pv) else "N/A"
+                sig = " (significant)" if not pd.isna(pv) and pv < 0.05 else ""
+                with st.expander(f"{res['studyName'][:65]} - p = {p_str}{sig}", expanded=not pd.isna(pv) and pv < 0.05):
+                        st.dataframe(res["subtype_df"], use_container_width=True, hide_index=True)
+            else:
+                st.info("No molecular subtype data available for studies with mutations.")
             st.subheader("All variations")
             disp_cols = [c for c in muts_df.columns if c in ["geneSymbol", "hugoGeneSymbol", "proteinChange", "aminoAcidChange", "mutationType", "variantType", "studyId", "studyName"]]
             if disp_cols:
