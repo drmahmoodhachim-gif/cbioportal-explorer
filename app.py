@@ -14,7 +14,7 @@ from cbioportal_client import (
     get_samples,
     get_mutations,
     fetch_mutations_by_study,
-    HEREDITARY_BREAST_CANCER_GENES,
+    add_gene_symbols,
 )
 from visualizations import (
     ANALYSIS_TYPES,
@@ -116,7 +116,7 @@ st.sidebar.caption("Data from [cBioPortal](https://www.cbioportal.org)")
 if st.sidebar.button("▶️ Run Analysis", type="primary"):
     with st.spinner("Fetching mutation data..."):
         try:
-            mutations_df = fetch_mutations_by_study(study_id, molecular_profile_id)
+            mutations_df = fetch_mutations_by_study(study_id, molecular_profile_id, max_samples=sample_limit)
         except Exception as e:
             st.error(f"Error fetching mutations: {e}")
             st.stop()
