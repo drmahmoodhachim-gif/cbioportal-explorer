@@ -541,16 +541,28 @@ def fetch_survival_data_for_gene(
     counts.columns = ["Group", "N"]
     return surv_df, counts, time_col, ""
 
-# Known downstream/pathway genes for DEG (from pathway DBs, literature)
+# Known downstream/pathway genes for DEG (gene-specific; from pathway DBs, literature)
 DOWNSTREAM_GENES = {
     "BRCA1": ["RAD51", "BRCA2", "ATM", "CHEK2", "TP53", "CCND1", "MYC", "E2F1", "BARD1", "PALB2", "CDKN1A", "FANCD2", "MRE11", "RAD50", "NBN"],
     "BRCA2": ["RAD51", "BRCA1", "PALB2", "ATM", "TP53", "CDKN1A", "FANCD2", "FANCA", "RAD51C", "RAD51D"],
-    "TP53": ["CDKN1A", "MDM2", "BAX", "PUMA", "BBC3", "CCND1", "CDK4", "E2F1", "BRCA1"],
+    "TP53": ["CDKN1A", "MDM2", "BAX", "BBC3", "CCND1", "CDK4", "E2F1", "BRCA1"],
     "PTEN": ["AKT1", "PIK3CA", "MTOR", "GSK3B", "FOXO1", "CCND1", "CDKN1A"],
-    "PIK3CA": ["AKT1", "MTOR", "GSK3B", "PTEN", "FOXO1", "CCND1"],
+    "PIK3CA": ["AKT1", "MTOR", "GSK3B", "PTEN", "FOXO1", "CCND1", "RPS6KB1"],
+    "ERBB2": ["GRB2", "SOS1", "MAP2K1", "MAPK1", "PIK3CA", "AKT1", "MTOR", "MYC", "CCND1", "ERBB3", "EGFR"],
+    "ESR1": ["CCND1", "MYC", "GREB1", "TFF1", "PGR", "BCL2", "CDKN1A", "FOXA1", "GATA3"],
+    "CDH1": ["CTNNA1", "CTNND1", "JUP", "CDH2", "EGFR", "WNT3A"],
+    "GATA3": ["ESR1", "FOXA1", "KRT18", "KRT19", "TFF1", "PGR"],
+    "MAP3K1": ["MAP2K1", "MAP2K2", "MAPK1", "MAPK3", "JUN", "ELK1"],
+    "NF1": ["KRAS", "BRAF", "MAP2K1", "MAPK1", "RASA1", "RAF1"],
+    "AKT1": ["MTOR", "GSK3B", "FOXO1", "BAD", "TSC2", "MDM2", "CCND1"],
+    "ATM": ["TP53", "CHEK2", "BRCA1", "BRCA2", "RAD50", "MRE11", "NBN", "CDKN1A"],
+    "CHEK2": ["TP53", "CDC25A", "BRCA1", "CDKN1A", "E2F1"],
+    "PALB2": ["BRCA1", "BRCA2", "RAD51", "RAD51C", "FANCD2"],
+    "CDKN1A": ["CDK2", "CDK4", "CDK6", "CCND1", "E2F1", "TP53"],
+    "MYC": ["CCND1", "CDKN1A", "BCL2", "E2F1", "CDK4"],
 }
-# Fallback: hereditary breast cancer genes as downstream for any gene
-DEFAULT_DOWNSTREAM = ["BRCA1", "BRCA2", "TP53", "PTEN", "RAD51", "ATM", "CHEK2", "PALB2", "CDKN1A", "CCND1", "MYC", "E2F1"]
+# Fallback for genes without curated list: shared pathway / cell-cycle genes
+DEFAULT_DOWNSTREAM = ["TP53", "CDKN1A", "CCND1", "MYC", "E2F1", "AKT1", "MTOR", "BRCA1", "BRCA2", "PTEN", "EGFR", "MAPK1"]
 
 
 def get_molecular_data(
