@@ -9,12 +9,29 @@ import pandas as pd
 
 API_BASE = "https://www.cbioportal.org/api"
 
-# Hereditary breast cancer genes (symbol -> Entrez ID)
 HEREDITARY_BREAST_CANCER_GENES = {
     "BRCA1": 672, "BRCA2": 675, "PALB2": 79728, "TP53": 7157, "PTEN": 5728,
     "CDH1": 999, "STK11": 6794, "ATM": 472, "CHEK2": 11200, "BARD1": 580,
     "RAD51C": 5889, "RAD51D": 5892, "NF1": 4763,
 }
+
+
+def _add_gene_symbols(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "hugoGeneSymbol" in df.columns or "geneSymbol" in df.columns:
+        return df
+    if "entrezGeneId" not in df.columns:
+        return df
+    id_to_symbol = {v: k for k, v in HEREDITARY_BREAST_CANCER_GENES.items()}
+
+    def _to_symbol(x):
+        try:
+            return id_to_symbol.get(int(float(x)), str(int(float(x))))
+        except (ValueError, TypeError):
+            return str(x) if pd.notna(x) else ""
+
+    out = df.copy()
+    out["hugoGeneSymbol"] = df["entrezGeneId"].apply(_to_symbol)
+    return out
 
 
 def _get(endpoint: str, params: Optional[dict] = None) -> list:
@@ -80,8 +97,6 @@ def get_mutations(
     If no sample_ids or entrez_gene_ids provided, fetches all (may be slow for large studies).
     """
     if not sample_ids and not entrez_gene_ids:
-        # Fetch all mutations - API may require at least one filter
-        # Try without filters - some endpoints accept empty
         try:
             data = _get(f"/molecular-profiles/{molecular_profile_id}/mutations")
             if not data:
@@ -108,30 +123,27 @@ def fetch_mutations_by_study(
     molecular_profile_id: str,
     sample_ids: Optional[list] = None,
 ) -> pd.DataFrame:
-    """Fetch mutations using the mutations/fetch endpoint with study context."""
+    """Fetch mutations via molecular profile endpoint (reliable). /mutations/fetch often returns empty."""
     samples = get_samples(study_id)
     if samples.empty:
         return pd.DataFrame()
-
     sample_ids_to_use = sample_ids or samples["sampleId"].tolist()
-    # Limit to avoid timeout on very large studies
     if len(sample_ids_to_use) > 500:
         sample_ids_to_use = sample_ids_to_use[:500]
-
-    body = {
-        "sampleIdentifiers": [
-            {"studyId": study_id, "sampleId": sid} for sid in sample_ids_to_use
-        ],
-    }
-
+    try:
+        df = get_mutations(molecular_profile_id, sample_ids=sample_ids_to_use)
+        if not df.empty:
+            return _add_gene_symbols(df)
+    except Exception:
+        pass
+    body = {"sampleIdentifiers": [{"studyId": study_id, "sampleId": sid} for sid in sample_ids_to_use]}
     try:
         data = _post("/mutations/fetch", body)
-        if not data:
-            return pd.DataFrame()
-        return pd.DataFrame(data)
+        if data:
+            return _add_gene_symbols(pd.DataFrame(data))
     except Exception:
-        # Fallback to profile-specific endpoint
-        return get_mutations(molecular_profile_id, sample_ids_to_use)
+        pass
+    return pd.DataFrame()
 
 
 def get_cancer_types() -> pd.DataFrame:
