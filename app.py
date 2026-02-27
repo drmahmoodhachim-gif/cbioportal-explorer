@@ -188,13 +188,19 @@ elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
             else:
                 st.success(f"Loaded survival data for **{surv_gene_input}** ({time_col})")
                 st.dataframe(surv_counts, use_container_width=True, hide_index=True)
-                fig_surv, stats_surv = survival_plot_gof_lof(surv_df, surv_gene_input, time_col)
+                surv_type_display = {"OS_MONTHS": "Overall Survival", "DFS_MONTHS": "Disease-Free Survival",
+                    "PFS_MONTHS": "Progression-Free Survival", "RFS_MONTHS": "Recurrence-Free Survival",
+                    "DSS_MONTHS": "Disease-Specific Survival"}.get(time_col, time_col)
+                fig_surv, stats_surv, interp = survival_plot_gof_lof(surv_df, surv_gene_input, surv_type_display)
                 st.pyplot(fig_surv)
                 plt.close(fig_surv)
                 if not stats_surv.empty:
                     st.dataframe(stats_surv, use_container_width=True, hide_index=True)
+                if interp:
+                    st.markdown("---")
+                    st.markdown(interp)
                 buf = io.BytesIO()
-                fig_surv2, _ = survival_plot_gof_lof(surv_df, surv_gene_input, time_col)
+                fig_surv2, _, _ = survival_plot_gof_lof(surv_df, surv_gene_input, surv_type_display)
                 fig_surv2.savefig(buf, format="png", dpi=300, bbox_inches="tight")
                 plt.close(fig_surv2)
                 buf.seek(0)

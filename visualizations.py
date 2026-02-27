@@ -307,31 +307,67 @@ def lollipop_mutations(df: pd.DataFrame, gene_symbol: str) -> Tuple[plt.Figure, 
     return fig, stats_df
 
 
+def _format_survival_type(col_name: str) -> str:
+    """Map OS_MONTHS, DFS_MONTHS etc. to display name."""
+    m = {"OS_MONTHS": "Overall Survival", "DFS_MONTHS": "Disease-Free Survival",
+         "PFS_MONTHS": "Progression-Free Survival", "RFS_MONTHS": "Recurrence-Free Survival",
+         "DSS_MONTHS": "Disease-Specific Survival"}
+    return m.get(col_name, col_name.replace("_", " ").title())
+
+
+def _write_survival_interpretation(
+    gene_symbol: str,
+    survival_type: str,
+    stats_df: pd.DataFrame,
+    logrank_p: float,
+    median_by_group: dict,
+) -> str:
+    """Generate plain-language interpretation of survival analysis."""
+    lines = []
+    lines.append(f"**Interpretation:** Kaplan-Meier curves compare {survival_type} among patients with *{gene_symbol}* **Wild Type** (no mutation), **Gain of Function** (missense/in-frame), and **Loss of Function** (nonsense/frameshift/splice) mutations.")
+    lines.append("")
+    if median_by_group:
+        lines.append("**Median survival (months):**")
+        for grp, med in median_by_group.items():
+            med_str = f"{med:.1f}" if pd.notna(med) and med < 1e10 else "NR"
+            lines.append(f"- {grp}: {med_str}")
+        lines.append("")
+    lines.append(f"**Log-rank test (across groups):** p = {logrank_p:.4f}" + (" (significant)" if logrank_p < 0.05 else " (not significant)"))
+    lines.append("")
+    if logrank_p < 0.05:
+        lines.append("Groups differ significantly. Loss of Function mutations often associate with poorer outcomes; Gain of Function may show different biology. Consider clinical context and sample sizes.")
+    else:
+        lines.append("No statistically significant difference between groups in this cohort. Small numbers in mutation groups may limit power. Results are exploratory.")
+    lines.append("")
+    lines.append("*This analysis is for research only. Not for clinical decision-making.*")
+    return "\n".join(lines)
+
+
 def survival_plot_gof_lof(
     surv_df: pd.DataFrame,
     gene_symbol: str,
     survival_type: str = "Overall Survival",
-) -> Tuple[plt.Figure, pd.DataFrame]:
-    """Kaplan-Meier survival plot: GoF vs LoF vs Wild Type."""
+) -> Tuple[plt.Figure, pd.DataFrame, str]:
+    """Kaplan-Meier survival plot: GoF vs LoF vs Wild Type. Returns (fig, stats_df, interpretation)."""
     _setup_style()
+    empty_fig, empty_ax = plt.subplots(figsize=FIG_SIZE)
     if surv_df.empty or "group" not in surv_df.columns or "time" not in surv_df.columns or "event" not in surv_df.columns:
-        fig, ax = plt.subplots(figsize=FIG_SIZE)
-        ax.text(0.5, 0.5, "No survival data available", ha="center", va="center", fontsize=14)
-        return fig, pd.DataFrame()
+        empty_ax.text(0.5, 0.5, "No survival data available", ha="center", va="center", fontsize=14)
+        return empty_fig, pd.DataFrame(), ""
 
     try:
         from lifelines import KaplanMeierFitter
-        from lifelines.statistics import logrank_test
+        from lifelines.statistics import multivariate_logrank_test
     except ImportError:
-        fig, ax = plt.subplots(figsize=FIG_SIZE)
-        ax.text(0.5, 0.5, "Install lifelines: pip install lifelines", ha="center", va="center", fontsize=14)
-        return fig, pd.DataFrame()
+        empty_ax.text(0.5, 0.5, "Install lifelines: pip install lifelines", ha="center", va="center", fontsize=14)
+        return empty_fig, pd.DataFrame(), ""
 
     fig, ax = plt.subplots(figsize=(10, 6))
     colors = {"Loss of Function": "#e74c3c", "Gain of Function": "#3498db", "Wild Type": "#2ecc71"}
     order = ["Wild Type", "Gain of Function", "Loss of Function"]
     kmf = KaplanMeierFitter()
     results = []
+    median_by_group = {}
 
     for grp in order:
         if grp not in surv_df["group"].values:
@@ -341,6 +377,18 @@ def survival_plot_gof_lof(
         kmf.fit(T, E, label=f"{grp} (n={len(d)})")
         kmf.plot_survival_function(ax=ax, ci_show=True, color=colors.get(grp, "gray"))
         results.append({"Group": grp, "N": len(d), "Events": int(E.sum())})
+        try:
+            med = kmf.median_survival_time_
+            median_by_group[grp] = med
+        except Exception:
+            median_by_group[grp] = None
+
+    # Log-rank test across all groups
+    try:
+        res = multivariate_logrank_test(surv_df["time"], surv_df["group"], surv_df["event"])
+        logrank_p = res.p_value
+    except Exception:
+        logrank_p = float("nan")
 
     ax.set_xlabel("Time (months)")
     ax.set_ylabel("Survival probability")
@@ -350,7 +398,16 @@ def survival_plot_gof_lof(
     plt.tight_layout()
 
     stats_df = pd.DataFrame(results) if results else pd.DataFrame()
-    return fig, stats_df
+    # Add median to stats_df if available
+    if median_by_group and not stats_df.empty:
+        def _fmt_med(g):
+            v = median_by_group.get(g)
+            if pd.isna(v) or v is None or v >= 1e10:
+                return "NR"
+            return f"{v:.1f}"
+        stats_df["Median (months)"] = stats_df["Group"].map(_fmt_med)
+    interpretation = _write_survival_interpretation(gene_symbol, survival_type, stats_df, logrank_p, median_by_group)
+    return fig, stats_df, interpretation
 
 
 ANALYSIS_TYPES = {
