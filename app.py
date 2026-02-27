@@ -14,6 +14,7 @@ from cbioportal_client import (
     get_samples,
     get_mutations,
     fetch_mutations_by_study,
+    add_gene_symbols,
 )
 from visualizations import (
     ANALYSIS_TYPES,
@@ -39,36 +40,30 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="main-header">🧬 cBioPortal Explorer</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Interactive cancer genomics data exploration with mutation analysis and publication-ready exports</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-header">🧬 cBioPortal Explorer – Breast Cancer</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Mutation analysis for breast cancer genomics with hereditary gene panels</p>', unsafe_allow_html=True)
 
 st.sidebar.header("📋 Data Selection")
 
 @st.cache_data(ttl=3600)
-def load_studies():
+def load_breast_cancer_studies():
     try:
-        return get_all_studies(projection="SUMMARY")
+        df = get_all_studies(projection="SUMMARY")
+        if df.empty:
+            return df
+        keywords = ("breast", "brca", "mammary")
+        mask = df.apply(
+            lambda r: any(kw in str(r.get("name","")).lower() or kw in str(r.get("studyId","")).lower() or kw in str(r.get("cancerTypeId","")).lower() for kw in keywords),
+            axis=1,
+        )
+        return df[mask].sort_values("studyId").reset_index(drop=True)
     except Exception as e:
         st.error(f"Failed to load studies: {e}")
         return pd.DataFrame()
 
-studies_df = load_studies()
+studies_df = load_breast_cancer_studies()
 if studies_df.empty:
-    st.warning("Could not load studies from cBioPortal. Check your internet connection.")
-    st.stop()
-
-cancer_filter = st.sidebar.text_input("Filter by keyword (e.g. TCGA, breast)", "")
-if cancer_filter:
-    mask = studies_df.apply(
-        lambda r: cancer_filter.lower() in str(r.get("name", "")).lower()
-        or cancer_filter.lower() in str(r.get("studyId", "")).lower()
-        or cancer_filter.lower() in str(r.get("cancerTypeId", "")).lower(),
-        axis=1,
-    )
-    studies_df = studies_df[mask]
-
-if studies_df.empty:
-    st.sidebar.info("No studies match your filter.")
+    st.warning("Could not load breast cancer studies from cBioPortal.")
     st.stop()
 
 study_options = {
