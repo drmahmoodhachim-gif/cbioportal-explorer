@@ -29,10 +29,11 @@ from visualizations import (
     summary_statistics,
 )
 
-# Owner info – replace with your details
-AUTHOR_NAME = "Dr. Mahmood Hachim"
-AUTHOR_ADDRESS = "[Your full address]"
-AUTHOR_EMAIL = "[Your email address]"
+# Owner info
+AUTHOR_NAME = "Mahmood Al Mashhadani"
+AUTHOR_TITLE = "Assistant Professor - Molecular Medicine"
+AUTHOR_AFFILIATION = "MBRU - College of Medicine"
+AUTHOR_EMAIL = "mahmood.almashhadani@dubaihealth.ae"
 
 st.set_page_config(
     page_title="cBioPortal Explorer",
@@ -56,8 +57,8 @@ st.markdown('<p class="sub-header">Mutation analysis for breast cancer genomics 
 st.markdown(f"""
 <div class="welcome-box">
     <strong>Welcome to the tool.</strong><br>
-    This application was developed by <strong>{AUTHOR_NAME}</strong>.<br>
-    <small>Address: {AUTHOR_ADDRESS} • Email: <a href="mailto:{AUTHOR_EMAIL}">{AUTHOR_EMAIL}</a></small>
+    Developed by <strong>{AUTHOR_NAME}</strong> — {AUTHOR_TITLE}<br>
+    <small>{AUTHOR_AFFILIATION} • <a href="mailto:{AUTHOR_EMAIL}">{AUTHOR_EMAIL}</a></small>
 </div>
 """, unsafe_allow_html=True)
 
