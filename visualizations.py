@@ -328,7 +328,7 @@ def deg_downstream_chart(deg_df: pd.DataFrame, gene_symbol: str) -> Tuple[plt.Fi
     ax.set_yticklabels(df["label"], fontsize=9)
     ax.set_xlabel("-log10(p-value)")
     ax.axvline(-np.log10(0.05), color="gray", linestyle="--", alpha=0.7, label="p=0.05")
-    ax.set_title(f"DEG downstream of {gene_symbol}: Wild vs LoF/GoF", fontweight="bold")
+    ax.set_title(f"DEG: {gene_symbol} mutation groups (LoF vs Wild, GoF vs Wild, LoF vs GoF)", fontweight="bold")
     ax.legend(loc="lower right")
     ax.invert_yaxis()
     plt.tight_layout()

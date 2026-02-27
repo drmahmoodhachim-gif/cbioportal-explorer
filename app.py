@@ -22,6 +22,7 @@ from cbioportal_client import (
     fetch_survival_data_for_gene,
     fetch_subtype_enrichment,
     fetch_deg_downstream,
+    fetch_deg_full,
     filter_studies_with_survival,
 )
 from visualizations import (
@@ -95,7 +96,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.sidebar.header("📋 Mode")
-mode = st.sidebar.radio("Choose analysis mode", ["Study Analysis", "Gene Search Across Studies", "Survival Plotter (GoF vs LoF vs Wild)"], key="mode")
+mode = st.sidebar.radio("Choose analysis mode", [
+    "Study Analysis",
+    "Gene Search Across Studies",
+    "Survival Plotter (GoF vs LoF vs Wild)",
+    "DEG Analysis (Wild vs LoF vs GoF)",
+], key="mode")
 st.sidebar.caption("Data from [cBioPortal](https://www.cbioportal.org)")
 
 @st.cache_data(ttl=3600)
@@ -259,18 +265,6 @@ elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
                 else:
                     st.info("Molecular subtype data not available for this study. Only overall survival is shown.")
 
-                # DEG downstream of gene (Wild vs LoF vs GoF)
-                st.subheader(f"DEG downstream of {surv_gene_input}")
-                with st.spinner("Fetching expression data for downstream genes..."):
-                    deg_df, deg_err = fetch_deg_downstream(surv_study_id, surv_profile_id, surv_gene_input)
-                if deg_err:
-                    st.info(deg_err)
-                elif not deg_df.empty:
-                    fig_deg, _ = deg_downstream_chart(deg_df, surv_gene_input)
-                    st.pyplot(fig_deg)
-                    plt.close(fig_deg)
-                    st.dataframe(deg_df, use_container_width=True, hide_index=True)
-
                 st.markdown("---")
                 buf = io.BytesIO()
                 fig_surv2, _, _ = survival_plot_gof_lof(surv_df, surv_gene_input, surv_type_display)
@@ -278,6 +272,49 @@ elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
                 plt.close(fig_surv2)
                 buf.seek(0)
                 st.download_button("Download survival plot (PNG)", buf, file_name=f"{surv_study_id}_{surv_gene_input}_survival.png", mime="image/png", key="dl_surv")
+elif mode == "DEG Analysis (Wild vs LoF vs GoF)":
+    st.subheader("📊 DEG Analysis: Wild vs Loss of Function vs Gain of Function")
+    st.markdown("Select a study and gene. Samples are classified into **Wild Type**, **Loss of Function** (nonsense, frameshift, splice), and **Gain of Function** (missense, in-frame). Differential expression (Mann–Whitney U) is computed for all genes between each group: **LoF vs Wild**, **GoF vs Wild**, **LoF vs GoF**. Studies must have expression data.")
+    deg_studies_df = load_breast_cancer_studies()
+    if deg_studies_df.empty:
+        st.warning("No breast cancer studies found.")
+        st.stop()
+    deg_study_options = {f"{r.get('name','')} ({r.get('studyId','')})": r.get("studyId") for _, r in deg_studies_df.iterrows()}
+    deg_study_label = st.selectbox("Select study", options=list(deg_study_options.keys()), key="deg_study")
+    deg_study_id = deg_study_options[deg_study_label]
+    deg_profiles_df = get_molecular_profiles(deg_study_id)
+    if not deg_profiles_df.empty and "molecularAlterationType" in deg_profiles_df.columns:
+        deg_mut_profiles = deg_profiles_df[deg_profiles_df["molecularAlterationType"].str.upper().str.contains("MUTATION", na=False)]
+        deg_mut_profiles = deg_mut_profiles if not deg_mut_profiles.empty else deg_profiles_df
+    else:
+        deg_mut_profiles = deg_profiles_df
+    deg_profile_options = {r.get("name", r.get("molecularProfileId", "")): r.get("molecularProfileId") for _, r in deg_mut_profiles.iterrows()} if not deg_mut_profiles.empty else {}
+    deg_profile_label = st.selectbox("Select mutation profile", options=list(deg_profile_options.keys()) or [""], key="deg_profile")
+    deg_profile_id = deg_profile_options.get(deg_profile_label) if deg_profile_options else None
+    deg_gene_input = st.text_input("Enter gene symbol", value="BRCA1", key="deg_gene")
+    deg_p_threshold = st.slider("p-value threshold for significant DEG", 0.01, 0.10, 0.05, 0.01, key="deg_p")
+    if st.button("📊 Run DEG Analysis", type="primary", key="btn_deg"):
+        if not deg_profile_id:
+            st.error("No mutation profile selected.")
+        else:
+            with st.spinner("Classifying samples and computing differential expression (may take 30–60 sec)..."):
+                deg_df, deg_counts, deg_err = fetch_deg_full(deg_study_id, deg_profile_id, deg_gene_input, p_threshold=deg_p_threshold)
+            if deg_err:
+                st.warning(deg_err)
+            if not deg_counts.empty:
+                st.success(f"Sample groups for **{deg_gene_input}**")
+                st.dataframe(deg_counts, use_container_width=True, hide_index=True)
+            if deg_err and deg_df.empty:
+                st.info("Try a study with mRNA expression data (e.g. TCGA Pan-Can Breast).")
+            elif not deg_df.empty:
+                st.subheader(f"Significant DEG (p ≤ {deg_p_threshold})")
+                fig_deg, _ = deg_downstream_chart(deg_df, deg_gene_input)
+                st.pyplot(fig_deg)
+                plt.close(fig_deg)
+                st.dataframe(deg_df, use_container_width=True, hide_index=True)
+                st.download_button("Download DEG results (CSV)", deg_df.to_csv(index=False), file_name=f"{deg_study_id}_{deg_gene_input}_DEG.csv", mime="text/csv", key="dl_deg")
+            elif not deg_err:
+                st.info("No significant DEG at the selected p-value threshold.")
 else:
     study_options = {
         f"{row.get('name', row.get('studyId', ''))} ({row.get('studyId', '')})": row.get("studyId")

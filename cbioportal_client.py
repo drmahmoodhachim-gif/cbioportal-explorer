@@ -564,6 +564,18 @@ DOWNSTREAM_GENES = {
 # Fallback for genes without curated list: shared pathway / cell-cycle genes
 DEFAULT_DOWNSTREAM = ["TP53", "CDKN1A", "CCND1", "MYC", "E2F1", "AKT1", "MTOR", "BRCA1", "BRCA2", "PTEN", "EGFR", "MAPK1"]
 
+# Broad gene set for standalone DEG analysis (union of pathway genes + cancer-relevant)
+DEG_GENES_FULL = list(dict.fromkeys(
+    [g for genes in DOWNSTREAM_GENES.values() for g in genes]
+    + DEFAULT_DOWNSTREAM
+    + ["GRB2", "SOS1", "RAF1", "BRAF", "KRAS", "NRAS", "MAPK1", "MAPK3", "MAP2K1", "MAP2K2",
+       "BCL2", "BCL2L1", "BAD", "BAX", "BBC3", "MDM2", "CDK4", "CDK6", "CDK2", "RB1",
+       "FANCA", "FANCD2", "FANCC", "ERBB3", "EGFR", "GREB1", "TFF1", "PGR", "FOXA1", "GATA3",
+       "KRT18", "KRT19", "CTNNA1", "CTNND1", "JUP", "CDH2", "WNT3A", "GSK3B", "FOXO1",
+       "RPS6KB1", "TSC2", "RASA1", "ELK1", "JUN", "E2F1", "CCND1", "CDKN1A", "CDKN2A",
+       "RAD51", "RAD51C", "RAD51D", "MRE11", "RAD50", "NBN", "BARD1"]
+))
+
 
 def get_molecular_data(
     molecular_profile_id: str,
@@ -713,6 +725,150 @@ def fetch_deg_downstream(
     deg_df = pd.DataFrame(results)
     deg_df = deg_df.sort_values("p_value")
     return deg_df, ""
+
+
+def fetch_deg_full(
+    study_id: str,
+    mut_profile_id: str,
+    gene_symbol: str,
+    sample_list_id: Optional[str] = None,
+    p_threshold: float = 0.05,
+) -> Tuple[pd.DataFrame, pd.DataFrame, str]:
+    """
+    Full DEG analysis: classify samples into Wild, LoF, GoF; test all comparisons.
+    Comparisons: LoF vs Wild, GoF vs Wild, LoF vs GoF.
+    Returns (deg_df, group_counts_df, error_msg).
+    deg_df: Gene, Comparison, Median_diff, p_value, Direction, N_A, N_B.
+    """
+    entrez = get_entrez_id(gene_symbol)
+    if not entrez:
+        return pd.DataFrame(), pd.DataFrame(), f"Gene {gene_symbol} not found"
+
+    if not sample_list_id:
+        sl_df = get_sample_lists(study_id)
+        sample_list_id = _pick_sample_list_for_expression(sl_df)
+        if not sample_list_id:
+            return pd.DataFrame(), pd.DataFrame(), "No suitable sample list (need expression data)"
+
+    profiles = get_molecular_profiles(study_id)
+    if profiles.empty:
+        return pd.DataFrame(), pd.DataFrame(), "No molecular profiles"
+    expr_profiles = profiles[
+        profiles["molecularAlterationType"].astype(str).str.upper().str.contains("MRNA|EXPRESSION", na=False)
+    ]
+    if expr_profiles.empty and "datatype" in profiles.columns:
+        expr_profiles = profiles[profiles["datatype"].astype(str).str.upper().str.contains("Z-SCORE|CONTINUOUS", na=False)]
+    if expr_profiles.empty:
+        return pd.DataFrame(), pd.DataFrame(), "No expression profile in study"
+
+    expr_profile_id = expr_profiles.iloc[0]["molecularProfileId"]
+    samples = get_samples(study_id)
+    if samples.empty:
+        return pd.DataFrame(), pd.DataFrame(), "No samples"
+
+    # Mutation classification
+    muts_df = pd.DataFrame()
+    try:
+        muts_df = get_mutations(mut_profile_id, sample_list_id=sample_list_id, entrez_gene_ids=[entrez])
+        if not muts_df.empty:
+            muts_df = _add_gene_symbols(muts_df)
+    except Exception:
+        pass
+
+    LOF_TYPES = {"frame_shift_del", "frame_shift_ins", "nonsense_mutation", "splice_site",
+                 "nonstop_mutation", "de_novo_start_outofframe", "start_codon_snp"}
+    GOF_TYPES = {"missense_mutation", "in_frame_del", "in_frame_ins", "missense_variant"}
+
+    def _classify(mt):
+        mt = str(mt).lower().replace(" ", "_") if pd.notna(mt) else ""
+        if mt in LOF_TYPES:
+            return "Loss of Function"
+        if mt in GOF_TYPES:
+            return "Gain of Function"
+        return "Gain of Function"
+
+    sample_groups = {}
+    all_sids = samples["sampleId"].tolist()
+    if not muts_df.empty and "sampleId" in muts_df.columns:
+        mut_col = "mutationType" if "mutationType" in muts_df.columns else "variantType"
+        for _, row in muts_df.iterrows():
+            sid = row["sampleId"]
+            grp = _classify(row.get(mut_col, ""))
+            if sid not in sample_groups or grp == "Loss of Function":
+                sample_groups[sid] = grp
+        for sid in list(sample_groups):
+            if sample_groups[sid] == "Other":
+                sample_groups[sid] = "Gain of Function"
+    for sid in all_sids:
+        if sid not in sample_groups:
+            sample_groups[sid] = "Wild Type"
+
+    # Group counts
+    from collections import Counter
+    cnt = Counter(sample_groups.values())
+    group_counts = pd.DataFrame([{"Group": k, "N": v} for k, v in sorted(cnt.items())])
+
+    # Gene set: DEG_GENES_FULL minus query gene
+    genes_to_test = [g for g in DEG_GENES_FULL if g.upper() != gene_symbol.upper()]
+    down_entrez = [(get_entrez_id(g), g) for g in genes_to_test]
+    down_entrez = [(e, s) for e, s in down_entrez if e]
+    if not down_entrez:
+        return pd.DataFrame(), group_counts, "No genes resolved for DEG"
+
+    expr_df = get_molecular_data(expr_profile_id, sample_list_id, [e for e, _ in down_entrez])
+    if expr_df.empty:
+        return pd.DataFrame(), group_counts, "No expression data"
+    id_col = "entrezGeneId" if "entrezGeneId" in expr_df.columns else "geneId"
+    if id_col not in expr_df.columns or "sampleId" not in expr_df.columns or "value" not in expr_df.columns:
+        return pd.DataFrame(), group_counts, "No expression data (missing columns)"
+    expr_df["entrezGeneId"] = expr_df[id_col]
+    expr_df["group"] = expr_df["sampleId"].map(sample_groups)
+    expr_df = expr_df.dropna(subset=["group", "value"])
+    expr_df["value"] = pd.to_numeric(expr_df["value"], errors="coerce")
+    expr_df = expr_df.dropna(subset=["value"])
+
+    try:
+        from scipy.stats import mannwhitneyu
+    except ImportError:
+        return pd.DataFrame(), group_counts, "Install scipy for DEG"
+
+    comparisons = [
+        ("Loss of Function", "Wild Type", "LoF vs Wild"),
+        ("Gain of Function", "Wild Type", "GoF vs Wild"),
+        ("Loss of Function", "Gain of Function", "LoF vs GoF"),
+    ]
+    results = []
+    for eg, sym in down_entrez:
+        sub = expr_df[expr_df["entrezGeneId"] == eg]
+        if sub.empty:
+            continue
+        for grp_a, grp_b, label in comparisons:
+            a = sub[sub["group"] == grp_a]["value"]
+            b = sub[sub["group"] == grp_b]["value"]
+            if len(a) < 3 or len(b) < 3:
+                continue
+            try:
+                u, p = mannwhitneyu(a, b, alternative="two-sided")
+                fc = a.median() - b.median()
+                direction = "up" if fc > 0 else "down"
+                results.append({
+                    "Gene": sym,
+                    "Comparison": label,
+                    "Median_diff": round(fc, 3),
+                    "p_value": round(p, 4),
+                    "Direction": direction,
+                    "N_A": len(a),
+                    "N_B": len(b),
+                })
+            except Exception:
+                continue
+
+    if not results:
+        return pd.DataFrame(), group_counts, "No comparisons (need ≥3 samples per group)"
+    deg_df = pd.DataFrame(results)
+    deg_df = deg_df[deg_df["p_value"] <= p_threshold]
+    deg_df = deg_df.sort_values("p_value")
+    return deg_df, group_counts, ""
 
 
 def get_cancer_types() -> pd.DataFrame:
