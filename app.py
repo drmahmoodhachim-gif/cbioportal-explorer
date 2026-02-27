@@ -233,12 +233,16 @@ elif mode == "Survival Plotter (GoF vs LoF vs Wild)":
     surv_profile_label = st.selectbox("Select mutation profile", options=list(surv_profile_options.keys()) or [""], key="surv_profile")
     surv_profile_id = surv_profile_options.get(surv_profile_label) if surv_profile_options else None
     surv_gene_input = st.text_input("Enter gene symbol", value="BRCA1", key="surv_gene")
+    surv_limit_opts = {"100 — Fast": 100, "200 — Balanced": 200, "500 — Moderate": 500, "1000 — Large": 1000, "2000 — Max": 2000}
+    surv_sample_limit = st.selectbox("Max samples", options=list(surv_limit_opts.keys()), index=2, key="surv_limit")
+    surv_max_samples = surv_limit_opts[surv_sample_limit]
+    st.caption("Higher = more patients, slower load; 1000+ may timeout on cloud.")
     if st.button("📈 Plot Survival", type="primary", key="btn_surv"):
         if not surv_profile_id:
             st.error("No mutation profile selected.")
         else:
             with st.spinner("Fetching survival data..."):
-                surv_df, surv_counts, time_col, err = fetch_survival_data_for_gene(surv_study_id, surv_profile_id, surv_gene_input)
+                surv_df, surv_counts, time_col, err = fetch_survival_data_for_gene(surv_study_id, surv_profile_id, surv_gene_input, max_samples=surv_max_samples)
             if err:
                 st.warning(err)
             else:
@@ -399,7 +403,21 @@ else:
 
     analysis_options = list(ANALYSIS_TYPES.keys())
     selected_analysis = st.sidebar.selectbox("3. Select Analysis", options=analysis_options, key="analysis")
-    sample_limit = st.sidebar.slider("Max samples to analyze (for speed)", 50, 500, 200)
+    SAMPLE_LIMIT_OPTIONS = {
+        "100 — Fast (quick exploration)": (100, "May miss rare mutations in large studies."),
+        "200 — Balanced (recommended)": (200, "Good speed and coverage for most studies."),
+        "500 — Moderate (broader coverage)": (500, "Slower on large cohorts; can timeout on cloud."),
+        "1000 — Large (big studies)": (1000, "Risk of timeouts on Streamlit Cloud."),
+        "2000 — Maximum (run locally)": (2000, "High timeout risk; best run locally."),
+    }
+    sample_limit_label = st.sidebar.selectbox(
+        "Max samples to analyze",
+        options=list(SAMPLE_LIMIT_OPTIONS.keys()),
+        index=1,
+        key="sample_limit",
+    )
+    sample_limit, sample_limit_consequence = SAMPLE_LIMIT_OPTIONS[sample_limit_label]
+    st.sidebar.caption(f"⚠️ {sample_limit_consequence}")
     top_n = st.sidebar.slider("Top N items in charts", 5, 50, 20)
 
     st.sidebar.divider()
@@ -425,7 +443,7 @@ This tool is for **research and educational purposes only**. It is NOT intended 
     if st.sidebar.button("▶️ Run Analysis", type="primary"):
         with st.spinner("Fetching mutation data..."):
             try:
-                mutations_df = fetch_mutations_by_study(study_id, molecular_profile_id)
+                mutations_df = fetch_mutations_by_study(study_id, molecular_profile_id, max_samples=sample_limit)
             except Exception as e:
                 st.error(f"Error fetching mutations: {e}")
                 st.stop()

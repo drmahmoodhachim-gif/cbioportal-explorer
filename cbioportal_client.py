@@ -15,18 +15,46 @@ HEREDITARY_BREAST_CANCER_GENES = {
     "CDH1": 999, "STK11": 6794, "ATM": 472, "CHEK2": 11200, "BARD1": 580,
     "RAD51C": 5889, "RAD51D": 5892, "NF1": 4763,
 }
+# Cache for API-resolved Entrez ID -> symbol (so all genes appear as symbols, not numbers)
+_ENTREZ_TO_SYMBOL_CACHE: dict = {v: k for k, v in HEREDITARY_BREAST_CANCER_GENES.items()}
+
+
+def _get_symbol_from_entrez(entrez_id: int) -> str:
+    """Resolve Entrez ID to gene symbol via cBioPortal API. Caches results."""
+    if entrez_id in _ENTREZ_TO_SYMBOL_CACHE:
+        return _ENTREZ_TO_SYMBOL_CACHE[entrez_id]
+    try:
+        r = requests.get(f"{API_BASE}/genes/{entrez_id}", timeout=15)
+        if r.ok and r.text:
+            data = r.json()
+            sym = data.get("hugoGeneSymbol") or data.get("geneSymbol")
+            if sym:
+                _ENTREZ_TO_SYMBOL_CACHE[entrez_id] = str(sym)
+                return str(sym)
+    except Exception:
+        pass
+    _ENTREZ_TO_SYMBOL_CACHE[entrez_id] = str(entrez_id)
+    return str(entrez_id)
 
 
 def _add_gene_symbols(df: pd.DataFrame) -> pd.DataFrame:
+    """Add hugoGeneSymbol column; resolve all Entrez IDs to symbols via API when not in cache."""
     if df.empty or "hugoGeneSymbol" in df.columns or "geneSymbol" in df.columns:
         return df
     if "entrezGeneId" not in df.columns:
         return df
-    id_to_symbol = {v: k for k, v in HEREDITARY_BREAST_CANCER_GENES.items()}
+    unique_ids = df["entrezGeneId"].dropna().unique()
+    for uid in unique_ids:
+        try:
+            eid = int(float(uid))
+            if eid not in _ENTREZ_TO_SYMBOL_CACHE:
+                _get_symbol_from_entrez(eid)
+        except (ValueError, TypeError):
+            pass
 
     def _to_symbol(x):
         try:
-            return id_to_symbol.get(int(float(x)), str(int(float(x))))
+            return _ENTREZ_TO_SYMBOL_CACHE.get(int(float(x)), _get_symbol_from_entrez(int(float(x))))
         except (ValueError, TypeError):
             return str(x) if pd.notna(x) else ""
 
@@ -146,14 +174,15 @@ def fetch_mutations_by_study(
     study_id: str,
     molecular_profile_id: str,
     sample_ids: Optional[list] = None,
+    max_samples: int = 500,
 ) -> pd.DataFrame:
     """Fetch mutations via molecular profile endpoint (reliable). /mutations/fetch often returns empty."""
     samples = get_samples(study_id)
     if samples.empty:
         return pd.DataFrame()
     sample_ids_to_use = sample_ids or samples["sampleId"].tolist()
-    if len(sample_ids_to_use) > 500:
-        sample_ids_to_use = sample_ids_to_use[:500]
+    if len(sample_ids_to_use) > max_samples:
+        sample_ids_to_use = sample_ids_to_use[:max_samples]
     try:
         df = get_mutations(molecular_profile_id, sample_ids=sample_ids_to_use)
         if not df.empty:
@@ -456,6 +485,7 @@ def fetch_survival_data_for_gene(
     molecular_profile_id: str,
     gene_symbol: str,
     sample_ids: Optional[list] = None,
+    max_samples: int = 500,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, str, str]:
     """
     Fetch mutations + clinical data for survival analysis by gene.
@@ -470,8 +500,8 @@ def fetch_survival_data_for_gene(
     if samples.empty:
         return pd.DataFrame(), pd.DataFrame(), "", "No samples"
     sample_ids_to_use = sample_ids or samples["sampleId"].tolist()
-    if len(sample_ids_to_use) > 500:
-        sample_ids_to_use = sample_ids_to_use[:500]
+    if len(sample_ids_to_use) > max_samples:
+        sample_ids_to_use = sample_ids_to_use[:max_samples]
 
     muts_df = pd.DataFrame()
     try:
